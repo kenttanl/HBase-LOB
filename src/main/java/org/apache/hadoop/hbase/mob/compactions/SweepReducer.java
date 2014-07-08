@@ -47,7 +47,7 @@ import org.apache.hadoop.hbase.mob.MobFile;
 import org.apache.hadoop.hbase.mob.MobFilePath;
 import org.apache.hadoop.hbase.mob.MobUtils;
 import org.apache.hadoop.hbase.regionserver.MemStore;
-import org.apache.hadoop.hbase.regionserver.MemStoreSweepOperator;
+import org.apache.hadoop.hbase.regionserver.MemStoreSweepWrapper;
 import org.apache.hadoop.hbase.regionserver.MobFileStore;
 import org.apache.hadoop.hbase.regionserver.MobFileStoreManager;
 import org.apache.hadoop.hbase.regionserver.StoreFileScanner;
@@ -60,7 +60,7 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
 
   private static final Log LOG = LogFactory.getLog(SweepReducer.class);
 
-  private MemStoreSweepOperator memstore;
+  private MemStoreSweepWrapper memstore;
   private Configuration conf;
   private FileSystem fs;
 
@@ -96,7 +96,7 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
     this.table.setAutoFlush(false, false);
 
     this.table.setWriteBufferSize(1 * 1024 * 1024); // 1MB
-    memstore = new MemStoreSweepOperator(context, table, new MemStore(), mobFileStore);
+    memstore = new MemStoreSweepWrapper(context, table, new MemStore(), mobFileStore);
 
     long compactionBegin = Long.parseLong(conf.get(MobConstants.MOB_COMPACTION_START_DATE, "0"));
     this.compactionBeginString = MobUtils.formatDate(new Date(compactionBegin));
