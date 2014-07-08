@@ -38,9 +38,9 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.CollectionBackedScanner;
 import org.apache.hadoop.mapreduce.Reducer.Context;
 
-public class MemStoreSweepWrapper {
+public class MemStoreWrapper {
 
-  private static final Log LOG = LogFactory.getLog(MemStoreSweepWrapper.class);
+  private static final Log LOG = LogFactory.getLog(MemStoreWrapper.class);
 
   private MemStore memstore;
   private long blockingMemStoreSize;
@@ -50,7 +50,7 @@ public class MemStoreSweepWrapper {
   private MobFileStore mobFileStore;
   private HTableInterface table;
 
-  public MemStoreSweepWrapper(Context context, HTableInterface table, MemStore memstore,
+  public MemStoreWrapper(Context context, HTableInterface table, MemStore memstore,
       MobFileStore mobFileStore) {
     this.memstore = memstore;
     this.context = context;
