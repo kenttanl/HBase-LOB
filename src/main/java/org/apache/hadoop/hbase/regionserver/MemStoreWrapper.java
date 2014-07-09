@@ -74,10 +74,8 @@ public class MemStoreWrapper {
   }
 
   public void flushMemStore() throws IOException {
-
     memstore.snapshot();
     SortedSet<KeyValue> snapshot = memstore.getSnapshot();
-
     internalFlushCache(snapshot, Long.MAX_VALUE);
     memstore.clearSnapshot(snapshot);
   }
@@ -117,7 +115,7 @@ public class MemStoreWrapper {
     mobFileWriter.close();
 
     mobFileStore.commitFile(mobFileWriter.getPath(), targetPath);
-    context.getCounter(SweepCounter.FILE_AFTER_MERGE_CLEAN).increment(1);
+    context.getCounter(SweepCounter.FILE_AFTER_MERGE_OR_CLEAN).increment(1);
     // write reference
     scanner = new CollectionBackedScanner(set, KeyValue.COMPARATOR);
     scanner.seek(KeyValue.createFirstOnRow(new byte[] {}));
