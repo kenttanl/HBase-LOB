@@ -68,16 +68,16 @@ public class MobFileStore {
   }
 
   public static MobFileStore create(Configuration conf, FileSystem fs, Path mobHome,
-      TableName tableName, String familyName) throws IOException {
-    HColumnDescriptor family = MobUtils.getColumnDescriptor(fs, mobHome, tableName, familyName);
+      TableName tableName, HColumnDescriptor family) throws IOException {
     if (null == family) {
-      LOG.warn("failed to create the HLobFileStore because the family [" + familyName
-          + "] int table [" + tableName + "]!");
+      LOG.warn("fail to create the MobFileStore because the family is null in table [" + tableName
+          + "]!");
       return null;
     }
+    String familyName = family.getNameAsString();
     if (!MobUtils.isMobFamily(family)) {
-      LOG.warn("failed to create the HLobFileStore because the family [" + familyName
-          + "] in table [" + tableName + "] is not a lob one!");
+      LOG.warn("failed to create the MobFileStore because the family [" + familyName
+          + "] in table [" + tableName + "] is not a mob one!");
       return null;
     }
     Path familyPath = new Path(mobHome, tableName + Path.SEPARATOR + familyName);

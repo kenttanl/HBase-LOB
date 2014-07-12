@@ -70,10 +70,6 @@ public class SweepJob {
       return;
     }
     try {
-      // 1. delete expired files by checking the column family.
-      // 2. Mapper. output. <filename, KeyValue List>
-      MobUtils.cleanExpiredData(fs, store);
-
       Scan scan = new Scan();
       // Do not retrieve the mob data when scanning
       scan.setAttribute(MobConstants.MOB_SCAN_RAW, Bytes.toBytes(Boolean.TRUE));
@@ -83,7 +79,6 @@ public class SweepJob {
       Job job = prepareTableJob(store, scan, SweepMapper.class, Text.class, KeyValue.class,
           SweepReducer.class, Text.class, Writable.class, TextOutputFormat.class, newConf);
       job.getConfiguration().set(TableInputFormat.SCAN_COLUMN_FAMILY, store.getFamilyName());
-
       /**
        * Record the compaction begin time
        */

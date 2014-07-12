@@ -35,7 +35,10 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.KeyValue;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTableFactory;
 import org.apache.hadoop.hbase.client.HTableInterface;
 import org.apache.hadoop.hbase.client.HTableInterfaceFactory;
@@ -48,7 +51,6 @@ import org.apache.hadoop.hbase.mob.MobUtils;
 import org.apache.hadoop.hbase.regionserver.MemStore;
 import org.apache.hadoop.hbase.regionserver.MemStoreWrapper;
 import org.apache.hadoop.hbase.regionserver.MobFileStore;
-import org.apache.hadoop.hbase.regionserver.MobFileStoreManager;
 import org.apache.hadoop.hbase.regionserver.StoreFileScanner;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.io.Text;
@@ -64,7 +66,7 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
   private FileSystem fs;
 
   private String tableName;
-  private String family;
+  private String familyName;
   private Path familyDir;
   private MobFileStore mobFileStore;
   private CacheConfig cacheConf;
@@ -76,15 +78,27 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
     this.conf = context.getConfiguration();
     this.fs = FileSystem.get(conf);
     this.tableName = conf.get(TableInputFormat.INPUT_TABLE);
-    this.family = conf.get(TableInputFormat.SCAN_COLUMN_FAMILY);
-    this.familyDir = new Path(MobUtils.getMobHome(conf), tableName + Path.SEPARATOR + family);
+    this.familyName = conf.get(TableInputFormat.SCAN_COLUMN_FAMILY);
+    this.familyDir = new Path(MobUtils.getMobHome(conf), tableName + Path.SEPARATOR + familyName);
 
-    MobFileStoreManager.current().init(conf, fs);
-    this.mobFileStore = MobFileStoreManager.current().getMobFileStore(tableName, family);
+    HBaseAdmin admin = new HBaseAdmin(this.conf);
+    HColumnDescriptor family = null;
+    try {
+      family = admin.getTableDescriptor(Bytes.toBytes(tableName)).getFamily(
+          Bytes.toBytes(familyName));
+    } finally {
+      try {
+        admin.close();
+      } catch (IOException e) {
+        LOG.warn("Fail to close the HBaseAdmin", e);
+      }
+    }
+    this.mobFileStore = MobFileStore.create(conf, fs, MobUtils.getMobHome(conf),
+        TableName.valueOf(tableName), family);
     this.cacheConf = new CacheConfig(conf, mobFileStore.getColumnDescriptor());
 
-    String htableFactoryClassName = conf.get(
-        MobConstants.MOB_COMPACTION_OUTPUT_TABLE_FACTORY, HTableFactory.class.getName());
+    String htableFactoryClassName = conf.get(MobConstants.MOB_COMPACTION_OUTPUT_TABLE_FACTORY,
+        HTableFactory.class.getName());
     HTableInterfaceFactory htableFactory = null;
     try {
       htableFactory = (HTableInterfaceFactory) Class.forName(htableFactoryClassName).newInstance();

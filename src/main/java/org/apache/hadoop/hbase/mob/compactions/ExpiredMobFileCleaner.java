@@ -33,31 +33,30 @@ import org.apache.hadoop.hbase.regionserver.MobFileStore;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
-import org.apache.zookeeper.KeeperException;
 
 import com.google.protobuf.ServiceException;
 
-public class Sweeper extends Configured implements Tool {
+public class ExpiredMobFileCleaner extends Configured implements Tool {
 
-  public void sweepFamily(String table, String familyName) throws IOException, InterruptedException,
-      ClassNotFoundException, KeeperException, ServiceException {
+  public void cleanExpiredMobFiles(String tableName, String familyName) throws ServiceException,
+      IOException {
     Configuration conf = getConf();
     HBaseAdmin.checkHBaseAvailable(conf);
     HBaseAdmin admin = new HBaseAdmin(conf);
     try {
       FileSystem fs = FileSystem.get(conf);
-      if (!admin.tableExists(table)) {
-        throw new IOException("Table " + table + " not exist");
+      if (!admin.tableExists(tableName)) {
+        throw new IOException("Table " + tableName + " not exist");
       }
-      HTableDescriptor htd = admin.getTableDescriptor(Bytes.toBytes(table));
+      HTableDescriptor htd = admin.getTableDescriptor(Bytes.toBytes(tableName));
       HColumnDescriptor family = htd.getFamily(Bytes.toBytes(familyName));
       if (!MobUtils.isMobFamily(family)) {
         throw new IOException("It's not a MOB column family");
       }
-      MobFileStore store = MobFileStore.create(conf, fs, MobUtils.getMobHome(conf),
-          TableName.valueOf(table), family);
-      SweepJob job = new SweepJob(fs);
-      job.sweep(store, conf);
+      System.out.println("Cleaning the expired MOB files...");
+      MobFileStore mobFileStore = MobFileStore.create(conf, fs, MobUtils.getMobHome(conf),
+          TableName.valueOf(tableName), family);
+      MobUtils.cleanExpiredData(fs, mobFileStore);
     } finally {
       try {
         admin.close();
@@ -69,19 +68,20 @@ public class Sweeper extends Configured implements Tool {
 
   public static void main(String[] args) throws Exception {
 
-    System.out.print("Usage:\n" + "--------------------------\n" + Sweeper.class.getName()
-        + "[tableName] [familyName]");
+    System.out.print("Usage:\n" + "--------------------------\n"
+        + ExpiredMobFileCleaner.class.getName() + "[tableName] [familyName]");
 
     Configuration conf = HBaseConfiguration.create();
-    ToolRunner.run(conf, new Sweeper(), args);
+    ToolRunner.run(conf, new ExpiredMobFileCleaner(), args);
   }
 
   public int run(String[] args) throws Exception {
     if (args.length >= 2) {
-      String table = args[0];
-      String family = args[1];
-      sweepFamily(table, family);
+      String tableName = args[0];
+      String familyName = args[1];
+      cleanExpiredMobFiles(tableName, familyName);
     }
     return 0;
   }
+
 }

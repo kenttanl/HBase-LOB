@@ -18,7 +18,6 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,7 +31,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HColumnDescriptor;
@@ -116,62 +114,15 @@ public class MobFileStoreManager {
     }
   }
 
-  public void init(Configuration conf, FileSystem fs) throws IOException {
+  public void init(Configuration conf, FileSystem fs) {
     if (!isInit) {
       synchronized (lock) {
         if (!isInit) {
           this.conf = conf;
           this.fs = fs;
           this.mobHome = MobUtils.getMobHome(conf);
-          loadMobFileStores(conf, fs, mobHome);
           isInit = true;
           LOG.info("MobFileStoreManager is initialized");
-        }
-      }
-    }
-  }
-
-  private void loadMobFileStores(Configuration conf, FileSystem fs, Path mobHome)
-      throws IOException {
-    FileStatus[] files = null;
-    try {
-      files = fs.listStatus(mobHome);
-    } catch (FileNotFoundException e) {
-      LOG.warn("Failed to list the files in " + mobHome, e);
-      return;
-    }
-    if (null == files) {
-      return;
-    }
-    for (int i = 0; i < files.length; i++) {
-      if (files[i].isDirectory()) {
-        loadMobFileStore(conf, fs, mobHome, files[i].getPath());
-      }
-    }
-  }
-
-  private void loadMobFileStore(Configuration conf, FileSystem fs, Path mobHome, Path path)
-      throws IOException {
-    FileStatus[] files = null;
-    try {
-      files = fs.listStatus(path);
-    } catch (FileNotFoundException e) {
-      LOG.warn("Failed to list the files in " + path, e);
-      return;
-    }
-    if (null == files) {
-      return;
-    }
-    String tableName = path.getName();
-
-    for (int i = 0; i < files.length; i++) {
-      if (files[i].isDirectory()) {
-        Path familyPath = files[i].getPath();
-        MobFileStoreKey key = new MobFileStoreKey(tableName, familyPath.getName());
-        MobFileStore mobFileStore = MobFileStore.create(conf, fs, mobHome, TableName.valueOf(tableName),
-            familyPath.getName());
-        if (null != mobFileStore) {
-          stores.put(key, mobFileStore);
         }
       }
     }
@@ -244,7 +195,7 @@ public class MobFileStoreManager {
 
     if (!stores.containsKey(key)) {
       MobFileStore blobStore = MobFileStore.create(conf, fs, mobHome, TableName.valueOf(tableName),
-          family.getNameAsString());
+          family);
       if (null == blobStore) {
         fs.mkdirs(homePath);
         blobStore = MobFileStore.create(conf, fs, homePath, family);
