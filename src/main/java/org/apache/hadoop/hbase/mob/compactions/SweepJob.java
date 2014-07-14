@@ -48,6 +48,7 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.KeeperException.NoNodeException;
 
 public class SweepJob {
 
@@ -64,33 +65,54 @@ public class SweepJob {
     Configuration newConf = new Configuration(conf);
     ZKUtil.applyClusterKeyToConf(newConf, conf.get(MobConstants.MOB_COMPACTION_ZOOKEEPER));
     MobZookeeper zk = MobZookeeper.newInstance(newConf);
-    if (!zk.lockStore(store.getTableName(), store.getFamilyName())) {
-      LOG.warn("Can not lock the store " + store.getFamilyName()
-          + ". The major compaction in Apache HBase may be in-progress. Please re-run the job.");
-      return;
-    }
     try {
-      Scan scan = new Scan();
-      // Do not retrieve the mob data when scanning
-      scan.setAttribute(MobConstants.MOB_SCAN_RAW, Bytes.toBytes(Boolean.TRUE));
-      scan.setFilter(new ReferenceOnlyFilter());
-      scan.setCaching(10000);
+      if (!zk.lockStore(store.getTableName(), store.getFamilyName())) {
+        LOG.warn("Can not lock the store " + store.getFamilyName()
+            + ". The major compaction in Apache HBase may be in-progress. Please re-run the job.");
+        return;
+      }
+      try {
+        boolean hasChildren = zk.hasMajorCompactionChildren(store.getTableName(), store.getFamilyName());
+        if (hasChildren) {
+          LOG.warn("The major compaction in Apache HBase may be in-progress. Please re-run the job.");
+          return;
+        } else {
+          boolean hasSweeper = zk.isSweeperZNodeExist(store.getTableName(), store.getFamilyName());
+          if(hasSweeper) {
+            LOG.warn("Another sweep job is running");
+            return;
+          } else {
+            // add the sweeper znode
+            zk.addSweeperZNode(store.getTableName(), store.getFamilyName());
+          }
+        }
+      } finally {
+        zk.unlockStore(store.getTableName(), store.getFamilyName());
+      }
+      try {
+        Scan scan = new Scan();
+        // Do not retrieve the mob data when scanning
+        scan.setAttribute(MobConstants.MOB_SCAN_RAW, Bytes.toBytes(Boolean.TRUE));
+        scan.setFilter(new ReferenceOnlyFilter());
+        scan.setCaching(10000);
 
-      Job job = prepareTableJob(store, scan, SweepMapper.class, Text.class, KeyValue.class,
-          SweepReducer.class, Text.class, Writable.class, TextOutputFormat.class, newConf);
-      job.getConfiguration().set(TableInputFormat.SCAN_COLUMN_FAMILY, store.getFamilyName());
-      /**
-       * Record the compaction begin time
-       */
-      job.getConfiguration().set(MobConstants.MOB_COMPACTION_START_DATE,
-          String.valueOf(new Date().getTime()));
+        Job job = prepareTableJob(store, scan, SweepMapper.class, Text.class, KeyValue.class,
+            SweepReducer.class, Text.class, Writable.class, TextOutputFormat.class, newConf);
+        job.getConfiguration().set(TableInputFormat.SCAN_COLUMN_FAMILY, store.getFamilyName());
+        /**
+         * Record the compaction begin time
+         */
+        job.getConfiguration().set(MobConstants.MOB_COMPACTION_START_DATE,
+            String.valueOf(new Date().getTime()));
 
-      job.setPartitionerClass(MobFilePathHashPartitioner.class);
-      job.waitForCompletion(true);
+        job.setPartitionerClass(MobFilePathHashPartitioner.class);
+        job.waitForCompletion(true);
+      } finally {
+        zk.deleteSweeperZNode(store.getTableName(), store.getFamilyName());
+      }
     } finally {
-      zk.unlockStore(store.getTableName(), store.getFamilyName());
+      zk.close();
     }
-
   }
 
   protected Job prepareTableJob(MobFileStore store, Scan scan, Class<? extends TableMapper> mapper,
@@ -125,8 +147,7 @@ public class SweepJob {
     Path workingPath = MobUtils.getCompactionWorkingPath(conf.get(
         MobConstants.MOB_COMPACTION_TEMP_DIR, MobConstants.DEFAULT_MOB_COMPACTION_TEMP_DIR),
         jobName);
-    job.getConfiguration().set(MobConstants.MOB_COMPACTION_JOB_WORKING_DIR, 
-        workingPath.toString());
+    job.getConfiguration().set(MobConstants.MOB_COMPACTION_JOB_WORKING_DIR, workingPath.toString());
     fs.delete(workingPath, true);
     return job;
   }

@@ -167,7 +167,7 @@ public class MobUtils {
     }
   }
 
-  public static String getStoreLockName(String tableName, String columnName) {
+  public static String getStoreZNodeName(String tableName, String columnName) {
     return tableName + ":" + columnName;
   }
 

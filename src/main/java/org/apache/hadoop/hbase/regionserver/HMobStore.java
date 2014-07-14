@@ -21,6 +21,7 @@ package org.apache.hadoop.hbase.regionserver;
 import java.io.IOException;
 import java.util.List;
 import java.util.NavigableSet;
+import java.util.UUID;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HColumnDescriptor;
@@ -59,31 +60,65 @@ public class HMobStore extends HStore {
 
   @Override
   public List<StoreFile> compact(CompactionContext compaction) throws IOException {
-    // If it's major compaction, try to add a lock. The lock is exclusive against the running of
-    // sweep tool.
-    // If adding fails, change the major compaction to a minor one.
+    // If it's major compaction, try to find whether there's a sweeper is running
+    // If yes, change the major compaction to a minor one.
     if (compaction.getRequest().isMajor() && MobUtils.isMobFamily(getFamily())) {
       MobZookeeper zk = null;
       try {
         zk = MobZookeeper.newInstance(this.getHRegion().conf);
+      } catch (KeeperException e) {
+        LOG.error("Cannot connect to the zookeeper, ready to perform the minor compaction instead",
+            e);
+        // change the major compaction into a minor one
+        compaction.getRequest().setIsMajor(false);
+        return super.compact(compaction);
+      }
+      boolean major = false;
+      String compactionName = UUID.randomUUID().toString().replaceAll("-", "");
+      try {
         if (zk.lockStore(getTableName().getNameAsString(), getFamily().getNameAsString())) {
           try {
             LOG.info("Obtain the lock for the store[" + this
                 + "], ready to perform the major compaction");
-            return super.compact(compaction);
+            // check the sweeper znode
+            boolean hasSweeper = zk.isSweeperZNodeExist(getTableName().getNameAsString(),
+                getFamily().getNameAsString());
+            if (!hasSweeper) {
+              // if not, add a child region znode to the family znode
+              major = zk.addMajorCompactionZNode(getTableName().getNameAsString(), getFamily()
+                  .getNameAsString(), compactionName);
+            }
+          } catch (Exception e) {
+            LOG.error("Fail to handle the Zookeeper", e);
           } finally {
             zk.unlockStore(getTableName().getNameAsString(), getFamily().getNameAsString());
-            zk.close();
           }
         }
-      } catch (Exception e) {
-        LOG.error("Fail to connect the Zookeeper", e);
+        try {
+          if (major) {
+            return super.compact(compaction);
+          } else {
+            LOG.info("Cannot obtain the lock or there's another major compaction for the store["
+                + this + "], ready to perform the minor compaction instead");
+            // change the major compaction into a minor one
+            compaction.getRequest().setIsMajor(false);
+            return super.compact(compaction);
+          }
+        } finally {
+          if (major) {
+            try {
+              zk.deleteMajorCompactionZNode(getTableName().getNameAsString(), getFamily()
+                  .getNameAsString(), compactionName);
+            } catch (KeeperException e) {
+              LOG.error("Fail to delete the compaction znode" + compactionName, e);
+            }
+          }
+        }
+      } finally {
+        zk.close();
       }
-      LOG.info("Cannot obtain the lock for the store[" + this
-          + "], ready to perform the minor compaction instead");
-      // change the major compaction into a minor one
-      compaction.getRequest().setIsMajor(false);
+    } else {
+      return super.compact(compaction);
     }
-    return super.compact(compaction);
   }
 }
