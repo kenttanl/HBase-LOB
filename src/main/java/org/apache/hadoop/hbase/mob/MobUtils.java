@@ -154,7 +154,7 @@ public class MobUtils {
         continue;
       }
       try {
-        Date fileDate = parseDate(fileName);
+        Date fileDate = parseDate(fileName.substring(0, 8));
         LOG.info("[MOB] Checking folder " + fileName);
         if (fileDate.getTime() < expireDate.getTime()) {
           LOG.info("[MOB] Delete expired folder " + fileName);

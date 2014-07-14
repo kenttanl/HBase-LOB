@@ -19,6 +19,7 @@
 package org.apache.hadoop.hbase.regionserver;
 
 import java.io.IOException;
+import java.util.Date;
 import java.util.UUID;
 import java.util.zip.CRC32;
 
@@ -104,7 +105,7 @@ public class MobFileStore {
     return homePath.getName();
   }
 
-  public StoreFile.Writer createWriterInTmp(int maxKeyCount, Compression.Algorithm compression,
+  public StoreFile.Writer createWriterInTmp(Date date, int maxKeyCount, Compression.Algorithm compression,
       byte[] startKey) throws IOException {
     if (null == startKey || startKey.length == 0) {
       startKey = new byte[1];
@@ -114,27 +115,25 @@ public class MobFileStore {
     CRC32 crc = new CRC32();
     crc.update(startKey);
     int checksum = (int) crc.getValue();
-    return createWriterInTmp(maxKeyCount, compression, MobFilePath.int2HexString(checksum));
+    return createWriterInTmp(date, maxKeyCount, compression, MobFilePath.int2HexString(checksum));
   }
 
-  public StoreFile.Writer createWriterInTmp(int maxKeyCount, Compression.Algorithm compression,
-      String prefix) throws IOException {
-
+  public StoreFile.Writer createWriterInTmp(Date date, int maxKeyCount, Compression.Algorithm compression,
+      String startKey) throws IOException {
     Path path = getTmpDir();
-
-    return createWriterInTmp(path, maxKeyCount, compression, prefix);
+    return createWriterInTmp(MobUtils.formatDate(date), path, maxKeyCount, compression, startKey);
   }
 
-  public StoreFile.Writer createWriterInTmp(Path tempPath, int maxKeyCount, Compression.Algorithm compression,
-      String prefix) throws IOException {
-    MobFilePath mobPath = MobFilePath.create(prefix, maxKeyCount, null, UUID.randomUUID()
+  public StoreFile.Writer createWriterInTmp(String date, Path tempPath, int maxKeyCount, Compression.Algorithm compression,
+      String startKey) throws IOException {
+    MobFilePath mobPath = MobFilePath.create(startKey, maxKeyCount, date, UUID.randomUUID()
         .toString().replaceAll("-", ""));
     Path path = new Path(tempPath, mobPath.getFileName());
     final CacheConfig writerCacheConf = cacheConf;
     HFileContext hFileContext = new HFileContextBuilder().withCompression(compression)
         .withChecksumType(HFile.DEFAULT_CHECKSUM_TYPE)
         .withBytesPerCheckSum(HFile.DEFAULT_BYTES_PER_CHECKSUM).withBlockSize(MIN_BLOCK_SIZE)
-        .withHBaseCheckSum(true) // TODO decide if it's needed.
+        .withHBaseCheckSum(true)
         .withDataBlockEncoding(DataBlockEncoding.NONE).build();
 
     StoreFile.Writer w = new StoreFile.WriterBuilder(conf, writerCacheConf, fs).withFilePath(path)

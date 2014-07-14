@@ -286,7 +286,7 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
     }
   }
 
-  public static class PathPrefixFilter implements PathFilter {
+  static class PathPrefixFilter implements PathFilter {
 
     private String prefix;
 
@@ -295,7 +295,7 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
     }
 
     public boolean accept(Path path) {
-      return path.getName().startsWith(prefix);
+      return path.getName().startsWith(prefix, 8);
     }
 
   }
@@ -361,11 +361,10 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
     public MobFileStatus(FileStatus status) {
       Path path = status.getPath();
       String fileName = path.getName();
-      String parentName = path.getParent().getName();
 
       this.length = status.getLen();
 
-      this.mobFilePath = MobFilePath.create(parentName, fileName);
+      this.mobFilePath = MobFilePath.create(fileName);
       this.count = mobFilePath.getRecordCount();
       referenceCount = 0;
     }

@@ -88,14 +88,13 @@ public class MemStoreWrapper {
     // generate the temp files into a fixed path.
     String tempPathString = context.getConfiguration().get(
         MobConstants.MOB_COMPACTION_JOB_WORKING_DIR);
-    StoreFile.Writer mobFileWriter = mobFileStore.createWriterInTmp(new Path(tempPathString),
-        set.size(), mobFileStore.getColumnDescriptor().getCompactionCompression(),
-        partitionId.getStartKey());
+    StoreFile.Writer mobFileWriter = mobFileStore.createWriterInTmp(partitionId.getDate(),
+        new Path(tempPathString), set.size(), mobFileStore.getColumnDescriptor()
+            .getCompactionCompression(), partitionId.getStartKey());
 
-    Path targetPath = new Path(mobFileStore.getHomePath(), partitionId.getDate());
+    Path targetPath = mobFileStore.getHomePath();
 
-    String relativePath = partitionId.getDate() + Path.SEPARATOR
-        + mobFileWriter.getPath().getName();
+    String relativePath = mobFileWriter.getPath().getName();
     LOG.info("Create temp files under " + mobFileWriter.getPath().toString());
 
     byte[] referenceValue = Bytes.toBytes(relativePath);

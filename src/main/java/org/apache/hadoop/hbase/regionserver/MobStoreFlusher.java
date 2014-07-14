@@ -133,14 +133,13 @@ public class MobStoreFlusher extends StoreFlusher {
             }
           }
 
-          mobFileWriter = mobFileStore.createWriterInTmp(mobKVCount, store.getFamily()
+          mobFileWriter = mobFileStore.createWriterInTmp(new Date(), mobKVCount, store.getFamily()
               .getCompression(), store.getRegionInfo().getStartKey());
-          // the path is {tableName}/{cfName}/{date}/mobFiles
-          // the relative path is {date}/mobFiles
-          String dateDir = MobUtils.formatDate(new Date());
-          Path targetPath = new Path(mobFileStore.getHomePath(), dateDir);
+          // the path is {tableName}/{cfName}/mobFiles
+          // the relative path is mobFiles
+          Path targetPath = mobFileStore.getHomePath();
 
-          String relativePath = dateDir + Path.SEPARATOR + mobFileWriter.getPath().getName();
+          String relativePath = mobFileWriter.getPath().getName();
 
           byte[] referenceValue = Bytes.toBytes(relativePath);
 

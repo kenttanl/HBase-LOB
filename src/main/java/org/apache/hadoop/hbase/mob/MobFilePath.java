@@ -32,31 +32,19 @@ public class MobFilePath {
   private int count;
 
   static public MobFilePath create(String startKey, int count, Date date, String uuid) {
-    String dateString = null;
-    if (null != date) {
-      dateString = MobUtils.formatDate(date);
-    }
+    String dateString = MobUtils.formatDate(date);
     return new MobFilePath(dateString, startKey, count, uuid);
   }
-
-  static public MobFilePath create(String filePath) {
-    int slashPosition = filePath.indexOf(Path.SEPARATOR);
-    String parent = null;
-    String fileName = null;
-    if (-1 != slashPosition) {
-      parent = filePath.substring(0, slashPosition);
-      fileName = filePath.substring(slashPosition + 1);
-    } else {
-      fileName = filePath;
-    }
-    return MobFilePath.create(parent, fileName);
+  
+  static public MobFilePath create(String startKey, int count, String date, String uuid) {
+    return new MobFilePath(date, startKey, count, uuid);
   }
 
-  static public MobFilePath create(String parentName, String fileName) {
-    String date = parentName;
-    int startKey = hexString2Int(fileName.substring(0, 8));
-    int count = hexString2Int(fileName.substring(8, 16));
-    String uuid = fileName.substring(16);
+  static public MobFilePath create(String fileName) {
+    String date = fileName.substring(0, 8);
+    int startKey = hexString2Int(fileName.substring(8, 16));
+    int count = hexString2Int(fileName.substring(16, 24));
+    String uuid = fileName.substring(24);
     return new MobFilePath(date, startKey, count, uuid);
   }
 
@@ -151,14 +139,10 @@ public class MobFilePath {
   }
 
   public Path getAbsolutePath(Path rootPath) {
-    if (null == date) {
-      return new Path(rootPath, getFileName());
-    } else {
-      return new Path(rootPath, this.date + Path.SEPARATOR + getFileName());
-    }
+    return new Path(rootPath, this.date + getFileName());
   }
 
   public String getFileName() {
-    return int2HexString(this.startKey) + int2HexString(this.count) + this.uuid;
+    return this.date + int2HexString(this.startKey) + int2HexString(this.count) + this.uuid;
   }
 }
