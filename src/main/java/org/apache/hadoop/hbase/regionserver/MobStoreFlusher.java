@@ -51,12 +51,20 @@ public class MobStoreFlusher extends StoreFlusher {
   private final Object flushLock = new Object();
   private boolean isMob = false;
   private int mobCellSizeThreshold = 0;
+  private Path targetPath;
+  private MobFileStore mobFileStore;
+  private Object lock = new Object();
+  private Path mobHome;
 
   public MobStoreFlusher(Configuration conf, Store store) {
     super(conf, store);
     isMob = MobUtils.isMobFamily(store.getFamily());
     mobCellSizeThreshold = conf.getInt(MobConstants.MOB_CELL_SIZE_THRESHOLD,
         MobConstants.DEFAULT_MOB_CELL_SIZE_THRESHOLD);
+    mobHome = MobUtils.getMobHome(conf);
+    Path mobPath = new Path(mobHome, new Path(store.getTableName().getNameAsString(),
+        MobConstants.MOB_REGION_NAME));
+    this.targetPath = new Path(mobPath, store.getColumnFamilyName());
   }
 
   @Override
@@ -103,14 +111,7 @@ public class MobStoreFlusher extends StoreFlusher {
       return result;
     } else {
       StoreFile.Writer writer;
-      MobFileStore mobFileStore = MobFileStoreManager.current().getMobFileStore(
-          store.getTableName().getNameAsString(), store.getFamily().getNameAsString());
-      if (null == mobFileStore) {
-        // create it and cache it
-        mobFileStore = MobFileStoreManager.current().createMobFileStore(
-            store.getTableName().getNameAsString(), store.getFamily());
-      }
-
+      mobFileStore = currentMobFileStore();
       StoreFile.Writer mobFileWriter = null;
       long flushed = 0;
       try {
@@ -135,10 +136,8 @@ public class MobStoreFlusher extends StoreFlusher {
 
           mobFileWriter = mobFileStore.createWriterInTmp(new Date(), mobKVCount, store.getFamily()
               .getCompression(), store.getRegionInfo().getStartKey());
-          // the path is {tableName}/{cfName}/mobFiles
+          // the target path is {tableName}/.mob/{cfName}/mobFiles
           // the relative path is mobFiles
-          Path targetPath = mobFileStore.getHomePath();
-
           String relativePath = mobFileWriter.getPath().getName();
 
           byte[] referenceValue = Bytes.toBytes(relativePath);
@@ -218,4 +217,16 @@ public class MobStoreFlusher extends StoreFlusher {
     }
   }
 
+  private MobFileStore currentMobFileStore() throws IOException {
+    if (null == mobFileStore) {
+      synchronized (lock) {
+        if (null == mobFileStore) {
+          this.store.getFileSystem().mkdirs(targetPath);
+          mobFileStore = MobFileStore.create(conf, this.store.getFileSystem(), mobHome,
+              this.store.getTableName(), this.store.getFamily());
+        }
+      }
+    }
+    return mobFileStore;
+  }
 }

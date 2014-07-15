@@ -37,6 +37,7 @@ public class MobConstants {
 
   public static final String MOB_ROOTDIR = "hbase.mob.rootdir";
   public static final String DEFAULT_MOB_ROOTDIR_NAME = "mob";
+  public static final String MOB_REGION_NAME = ".mob";
 
   public static final String MOB_COMPACTION_START_DATE = "hbase.mob.compaction.start.date";
 

@@ -19,7 +19,7 @@
 package org.apache.hadoop.hbase.mob.compactions;
 
 import org.apache.hadoop.hbase.KeyValue;
-import org.apache.hadoop.hbase.mob.MobFilePath;
+import org.apache.hadoop.hbase.mob.MobFileName;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Partitioner;
 
@@ -27,7 +27,7 @@ public class MobFilePathHashPartitioner extends Partitioner<Text, KeyValue> {
 
   @Override
   public int getPartition(Text filePath, KeyValue kv, int numPartitions) {
-    MobFilePath mobFilePath = MobFilePath.create(filePath.toString());
+    MobFileName mobFilePath = MobFileName.create(filePath.toString());
     String date = mobFilePath.getDate();
     int hash = date.hashCode();
     return (hash & Integer.MAX_VALUE) % numPartitions;

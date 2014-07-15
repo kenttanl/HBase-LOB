@@ -44,6 +44,12 @@ public class MobFile {
     this.sf = sf;
   }
 
+  /**
+   * Internal use only. This is used by the sweeper.
+   * 
+   * @return
+   * @throws IOException
+   */
   public StoreFileScanner getScanner() throws IOException {
     List<StoreFile> sfs = new ArrayList<StoreFile>();
     sfs.add(sf);
@@ -57,10 +63,10 @@ public class MobFile {
     return null;
   }
 
-  public KeyValue readKeyValue(KeyValue search, boolean cacheMobBlocks) throws IOException {
+  public KeyValue readKeyValue(KeyValue search, boolean cacheMobBlocks) {
     KeyValue result = null;
     StoreFileScanner scanner = null;
-    String msg = "";
+    String errorMsg = null;
     List<StoreFile> sfs = new ArrayList<StoreFile>();
     sfs.add(sf);
     try {
@@ -74,17 +80,17 @@ public class MobFile {
         }
       }
     } catch (IOException ioe) {
-      msg = "Failed to read KeyValue!";
+      errorMsg = "Failed to read KeyValue!";
       if (ioe.getCause() instanceof FileNotFoundException) {
-        msg += "The lob file does not exist!";
+        errorMsg += "The mob file does not exist!";
       }
-      LOG.error(msg, ioe);
+      LOG.error(errorMsg, ioe);
       result = null;
     } catch (NullPointerException npe) {
       // When delete the file during the scan, the hdfs getBlockRange will
       // throw NullPointerException, catch it and manage it.
-      msg = "Failed to read KeyValue! ";
-      LOG.error(msg, npe);
+      errorMsg = "Failed to read KeyValue! ";
+      LOG.error(errorMsg, npe);
       result = null;
     } finally {
       if (scanner != null) {

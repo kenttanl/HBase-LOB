@@ -27,10 +27,6 @@ import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.mob.MobUtils;
-import org.apache.hadoop.hbase.regionserver.HRegion;
-import org.apache.hadoop.hbase.regionserver.HRegionFileSystem;
-import org.apache.hadoop.hbase.regionserver.HStore;
-import org.apache.hadoop.hbase.regionserver.RegionServerServices;
 import org.apache.hadoop.hbase.regionserver.wal.HLog;
 
 /**
@@ -61,7 +57,6 @@ public class HMobRegion extends HRegion {
   @Override
   protected HStore instantiateHStore(final HColumnDescriptor family) throws IOException {
     if (MobUtils.isMobFamily(family)) {
-      MobFileStoreManager.current().init(conf, this.getFilesystem());
       return new HMobStore(this, family, this.conf);
     }
     return super.instantiateHStore(family);

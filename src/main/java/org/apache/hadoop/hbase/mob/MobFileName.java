@@ -24,28 +24,28 @@ import java.util.Date;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.util.Bytes;
 
-public class MobFilePath {
+public class MobFileName {
 
   private String date;
   private int startKey;
   private String uuid;
   private int count;
 
-  static public MobFilePath create(String startKey, int count, Date date, String uuid) {
+  static public MobFileName create(String startKey, int count, Date date, String uuid) {
     String dateString = MobUtils.formatDate(date);
-    return new MobFilePath(dateString, startKey, count, uuid);
+    return new MobFileName(dateString, startKey, count, uuid);
   }
   
-  static public MobFilePath create(String startKey, int count, String date, String uuid) {
-    return new MobFilePath(date, startKey, count, uuid);
+  static public MobFileName create(String startKey, int count, String date, String uuid) {
+    return new MobFileName(date, startKey, count, uuid);
   }
 
-  static public MobFilePath create(String fileName) {
+  static public MobFileName create(String fileName) {
     String date = fileName.substring(0, 8);
     int startKey = hexString2Int(fileName.substring(8, 16));
     int count = hexString2Int(fileName.substring(16, 24));
     String uuid = fileName.substring(24);
-    return new MobFilePath(date, startKey, count, uuid);
+    return new MobFileName(date, startKey, count, uuid);
   }
 
   public static String int2HexString(int i) {
@@ -89,11 +89,11 @@ public class MobFilePath {
       'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u',
       'v', 'w', 'x', 'y', 'z' };
 
-  public MobFilePath(String date, String startKey, int count, String uuid) {
+  public MobFileName(String date, String startKey, int count, String uuid) {
     this(date, hexString2Int(startKey), count, uuid);
   }
 
-  public MobFilePath(String date, int startKey, int count, String uuid) {
+  public MobFileName(String date, int startKey, int count, String uuid) {
 
     this.startKey = startKey;
     this.count = count;
@@ -124,8 +124,8 @@ public class MobFilePath {
     if (this == anObject) {
       return true;
     }
-    if (anObject instanceof MobFilePath) {
-      MobFilePath another = (MobFilePath) anObject;
+    if (anObject instanceof MobFileName) {
+      MobFileName another = (MobFileName) anObject;
       if (this.date.equals(another.date) && this.startKey == another.startKey
           && this.uuid.equals(another.uuid) && this.count == another.count) {
         return true;
@@ -139,7 +139,7 @@ public class MobFilePath {
   }
 
   public Path getAbsolutePath(Path rootPath) {
-    return new Path(rootPath, this.date + getFileName());
+    return new Path(rootPath, getFileName());
   }
 
   public String getFileName() {

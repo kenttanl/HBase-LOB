@@ -22,57 +22,37 @@ import java.io.IOException;
 import java.util.List;
 import java.util.NavigableSet;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.KeyValueUtil;
-import org.apache.hadoop.hbase.KeyValue.Type;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.mob.MobUtils;
 
 public class MobReversedStoreScanner extends ReversedStoreScanner {
 
-  private static final Log LOG = LogFactory.getLog(MobReversedStoreScanner.class);
   private boolean cacheMobBlocks = false;
-  
+  private MobFileStore mobFileStore;
+
   MobReversedStoreScanner(Store store, ScanInfo scanInfo, Scan scan, NavigableSet<byte[]> columns,
-      long readPt) throws IOException {
+      long readPt, MobFileStore mobFileStore) throws IOException {
     super(store, scanInfo, scan, columns, readPt);
     cacheMobBlocks = MobUtils.isCacheMobBlocks(scan);
+    this.mobFileStore = mobFileStore;
   }
 
   @Override
   public boolean next(List<Cell> outResult, int limit) throws IOException {
-    boolean result =  super.next(outResult, limit);
+    boolean result = super.next(outResult, limit);
     if (!MobUtils.isRawMobScan(scan)) {
-      //retrieve the mob data
+      // retrieve the mob data
       if (outResult.isEmpty()) {
         return result;
-      }
-      MobFileStore mobFileStore = MobFileStoreManager.current().
-          getMobFileStore(store.getTableName().getNameAsString(), store.getColumnFamilyName());
-      if (mobFileStore == null) {
-        LOG.error("Failed to find the MobFileStore[tableName:"
-            + store.getTableName().getNameAsString() + ",familyName:" + store.getColumnFamilyName()
-            + "]!");
       }
       for (int i = 0; i < outResult.size(); i++) {
         Cell cell = outResult.get(i);
         KeyValue kv = KeyValueUtil.ensureKeyValue(cell);
         if (MobUtils.isMobReferenceKeyValue(kv)) {
-          if (mobFileStore != null) {
-            outResult.set(i, mobFileStore.resolve(kv, cacheMobBlocks));
-          } else {
-            // replace the outResult with empty KeyValues
-            KeyValue emptyKv = new KeyValue(kv.getRowArray(), kv.getRowOffset(), kv.getRowLength(),
-                kv.getFamilyArray(), kv.getFamilyOffset(), kv.getFamilyLength(),
-                kv.getQualifierArray(), kv.getQualifierOffset(), kv.getQualifierLength(),
-                kv.getTimestamp(), Type.codeToType(kv.getTypeByte()), HConstants.EMPTY_BYTE_ARRAY,
-                kv.getValueOffset(), 0, kv.getTags());
-            outResult.set(i, emptyKv);
-          }
+          outResult.set(i, mobFileStore.resolve(kv, cacheMobBlocks));
         }
       }
     }

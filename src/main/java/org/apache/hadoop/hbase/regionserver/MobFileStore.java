@@ -39,37 +39,39 @@ import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.io.hfile.HFile;
 import org.apache.hadoop.hbase.io.hfile.HFileContext;
 import org.apache.hadoop.hbase.io.hfile.HFileContextBuilder;
+import org.apache.hadoop.hbase.mob.MobConstants;
 import org.apache.hadoop.hbase.mob.MobFile;
-import org.apache.hadoop.hbase.mob.MobFilePath;
+import org.apache.hadoop.hbase.mob.MobFileName;
 import org.apache.hadoop.hbase.mob.MobUtils;
 import org.apache.hadoop.hbase.util.Bytes;
 
 public class MobFileStore {
 
   private static final Log LOG = LogFactory.getLog(MobFileStore.class);
+  private Configuration conf;
   private FileSystem fs;
   private Path homePath;
   private CacheConfig cacheConf;
+  private String tableName;
   private HColumnDescriptor family;
-  private final static String TMP = ".tmp";
-  private Configuration conf;
+  private Path mobFamilyPath;
   private static final int MIN_BLOCK_SIZE = 1024;
+  private final static String TMP = ".tmp";
 
-  private MobFileStore(Configuration conf, FileSystem fs, Path homedPath, HColumnDescriptor family) {
+  private MobFileStore(Configuration conf, FileSystem fs, Path homedPath, String tableName,
+      HColumnDescriptor family) {
     this.fs = fs;
     this.homePath = homedPath;
     this.conf = conf;
     this.cacheConf = new CacheConfig(conf, family);
+    this.tableName = tableName;
     this.family = family;
+    Path mobPath = new Path(homePath, new Path(tableName, MobConstants.MOB_REGION_NAME));
+    this.mobFamilyPath = new Path(mobPath, family.getNameAsString());
   }
 
   public static MobFileStore create(Configuration conf, FileSystem fs, Path familyPath,
-      HColumnDescriptor family) throws IOException {
-    return new MobFileStore(conf, fs, familyPath, family);
-  }
-
-  public static MobFileStore create(Configuration conf, FileSystem fs, Path mobHome,
-      TableName tableName, HColumnDescriptor family) throws IOException {
+      String tableName, HColumnDescriptor family) throws IOException {
     if (null == family) {
       LOG.warn("fail to create the MobFileStore because the family is null in table [" + tableName
           + "]!");
@@ -81,16 +83,20 @@ public class MobFileStore {
           + "] in table [" + tableName + "] is not a mob one!");
       return null;
     }
-    Path familyPath = new Path(mobHome, tableName + Path.SEPARATOR + familyName);
-    return new MobFileStore(conf, fs, familyPath, family);
+    return new MobFileStore(conf, fs, familyPath, tableName, family);
+  }
+
+  public static MobFileStore create(Configuration conf, FileSystem fs, Path mobHome,
+      TableName tableName, HColumnDescriptor family) throws IOException {
+    return create(conf, fs, mobHome, tableName.getNameAsString(), family);
   }
 
   public HColumnDescriptor getColumnDescriptor() {
     return this.family;
   }
 
-  public Path getHomePath() {
-    return homePath;
+  public Path getPath() {
+    return mobFamilyPath;
   }
 
   public Path getTmpDir() {
@@ -98,15 +104,15 @@ public class MobFileStore {
   }
 
   public String getTableName() {
-    return homePath.getParent().getName();
+    return tableName;
   }
 
   public String getFamilyName() {
-    return homePath.getName();
+    return family.getNameAsString();
   }
 
-  public StoreFile.Writer createWriterInTmp(Date date, int maxKeyCount, Compression.Algorithm compression,
-      byte[] startKey) throws IOException {
+  public StoreFile.Writer createWriterInTmp(Date date, int maxKeyCount,
+      Compression.Algorithm compression, byte[] startKey) throws IOException {
     if (null == startKey || startKey.length == 0) {
       startKey = new byte[1];
       startKey[0] = 0x00;
@@ -115,33 +121,33 @@ public class MobFileStore {
     CRC32 crc = new CRC32();
     crc.update(startKey);
     int checksum = (int) crc.getValue();
-    return createWriterInTmp(date, maxKeyCount, compression, MobFilePath.int2HexString(checksum));
+    return createWriterInTmp(date, maxKeyCount, compression, MobFileName.int2HexString(checksum));
   }
 
-  public StoreFile.Writer createWriterInTmp(Date date, int maxKeyCount, Compression.Algorithm compression,
-      String startKey) throws IOException {
+  public StoreFile.Writer createWriterInTmp(Date date, int maxKeyCount,
+      Compression.Algorithm compression, String startKey) throws IOException {
     Path path = getTmpDir();
     return createWriterInTmp(MobUtils.formatDate(date), path, maxKeyCount, compression, startKey);
   }
 
-  public StoreFile.Writer createWriterInTmp(String date, Path tempPath, int maxKeyCount, Compression.Algorithm compression,
-      String startKey) throws IOException {
-    MobFilePath mobPath = MobFilePath.create(startKey, maxKeyCount, date, UUID.randomUUID()
+  public StoreFile.Writer createWriterInTmp(String date, Path basePath, int maxKeyCount,
+      Compression.Algorithm compression, String startKey) throws IOException {
+    MobFileName mobFileName = MobFileName.create(startKey, maxKeyCount, date, UUID.randomUUID()
         .toString().replaceAll("-", ""));
-    Path path = new Path(tempPath, mobPath.getFileName());
+    Path mobFilePath = new Path(mobFamilyPath, mobFileName.getFileName());
     final CacheConfig writerCacheConf = cacheConf;
     HFileContext hFileContext = new HFileContextBuilder().withCompression(compression)
         .withChecksumType(HFile.DEFAULT_CHECKSUM_TYPE)
         .withBytesPerCheckSum(HFile.DEFAULT_BYTES_PER_CHECKSUM).withBlockSize(MIN_BLOCK_SIZE)
-        .withHBaseCheckSum(true)
-        .withDataBlockEncoding(DataBlockEncoding.NONE).build();
+        .withHBaseCheckSum(true).withDataBlockEncoding(DataBlockEncoding.NONE).build();
 
-    StoreFile.Writer w = new StoreFile.WriterBuilder(conf, writerCacheConf, fs).withFilePath(path)
-        .withComparator(KeyValue.COMPARATOR).withBloomType(BloomType.NONE)
-        .withMaxKeyCount(maxKeyCount).withFileContext(hFileContext).build();
+    StoreFile.Writer w = new StoreFile.WriterBuilder(conf, writerCacheConf, fs)
+        .withFilePath(mobFilePath).withComparator(KeyValue.COMPARATOR)
+        .withBloomType(BloomType.NONE).withMaxKeyCount(maxKeyCount).withFileContext(hFileContext)
+        .build();
     return w;
   }
-  
+
   public void commitFile(final Path sourceFile, Path targetPath) throws IOException {
     if (null == sourceFile) {
       throw new NullPointerException();
@@ -183,24 +189,23 @@ public class MobFileStore {
     byte[] referenceValue = reference.getValue();
     String fileName = Bytes.toString(referenceValue);
     KeyValue result = null;
-
-    Path targetPath = new Path(homePath, fileName);
-    MobFile file = MobFile.create(fs, targetPath, conf, cacheConf); 
-    if (null != file) {
+    Path targetPath = new Path(mobFamilyPath, fileName);
+    MobFile file = MobFile.create(fs, targetPath, conf, cacheConf);
+    try {
       result = file.readKeyValue(reference, cacheBlocks);
+    } finally {
       file.close();
-    } else {
-      LOG.warn("Failed to find the lob file " + targetPath.toString());
     }
 
     if (result == null) {
       LOG.warn("The KeyValue result is null, assemble a new KeyValue with the same row,family,"
           + "qualifier,timestamp,type and tags but with an empty value to return.");
-      result = new KeyValue(reference.getRowArray(), reference.getRowOffset(), reference.getRowLength(),
-          reference.getFamilyArray(), reference.getFamilyOffset(), reference.getFamilyLength(),
-          reference.getQualifierArray(), reference.getQualifierOffset(), reference.getQualifierLength(),
-          reference.getTimestamp(), Type.codeToType(reference.getTypeByte()),
-          HConstants.EMPTY_BYTE_ARRAY, reference.getValueOffset(), 0, reference.getTags());
+      result = new KeyValue(reference.getRowArray(), reference.getRowOffset(),
+          reference.getRowLength(), reference.getFamilyArray(), reference.getFamilyOffset(),
+          reference.getFamilyLength(), reference.getQualifierArray(),
+          reference.getQualifierOffset(), reference.getQualifierLength(), reference.getTimestamp(),
+          Type.codeToType(reference.getTypeByte()), HConstants.EMPTY_BYTE_ARRAY,
+          reference.getValueOffset(), 0, reference.getTags());
     }
     return result;
   }

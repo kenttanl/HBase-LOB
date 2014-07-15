@@ -24,6 +24,7 @@ import java.util.NavigableSet;
 import java.util.UUID;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.mob.MobUtils;
@@ -33,9 +34,14 @@ import org.apache.zookeeper.KeeperException;
 
 public class HMobStore extends HStore {
 
+  private MobFileStore mobFileStore;
+
   public HMobStore(final HRegion region, final HColumnDescriptor family,
       final Configuration confParam) throws IOException {
     super(region, family, confParam);
+    Path home = MobUtils.getMobHome(region.conf);
+    mobFileStore = MobFileStore.create(region.conf, region.getFilesystem(), home,
+        this.getTableName(), this.getFamily());
   }
 
   @Override
@@ -49,8 +55,8 @@ public class HMobStore extends HStore {
       }
       if (scanner == null) {
         scanner = scan.isReversed() ? new MobReversedStoreScanner(this, getScanInfo(), scan,
-            targetCols, readPt)
-            : new MobStoreScanner(this, getScanInfo(), scan, targetCols, readPt);
+            targetCols, readPt, mobFileStore) : new MobStoreScanner(this, getScanInfo(), scan,
+            targetCols, readPt, mobFileStore);
       }
       return scanner;
     } finally {

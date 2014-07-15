@@ -46,7 +46,7 @@ import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.mapreduce.TableInputFormat;
 import org.apache.hadoop.hbase.mob.MobConstants;
 import org.apache.hadoop.hbase.mob.MobFile;
-import org.apache.hadoop.hbase.mob.MobFilePath;
+import org.apache.hadoop.hbase.mob.MobFileName;
 import org.apache.hadoop.hbase.mob.MobUtils;
 import org.apache.hadoop.hbase.regionserver.MemStore;
 import org.apache.hadoop.hbase.regionserver.MemStoreWrapper;
@@ -79,7 +79,9 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
     this.fs = FileSystem.get(conf);
     this.tableName = conf.get(TableInputFormat.INPUT_TABLE);
     this.familyName = conf.get(TableInputFormat.SCAN_COLUMN_FAMILY);
-    this.familyDir = new Path(MobUtils.getMobHome(conf), tableName + Path.SEPARATOR + familyName);
+    Path mobPath = new Path(MobUtils.getMobHome(conf), new Path(tableName,
+        MobConstants.MOB_REGION_NAME));
+    this.familyDir = new Path(mobPath, familyName);
 
     HBaseAdmin admin = new HBaseAdmin(this.conf);
     HColumnDescriptor family = null;
@@ -164,13 +166,13 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
     private Context context;
     private boolean memstoreUpdated = false;
     private boolean mergeSmall = false;
-    private Map<MobFilePath, MobFileStatus> fileInfos = new HashMap<MobFilePath, MobFileStatus>();
-    private List<MobFilePath> toBeDeleted;
+    private Map<MobFileName, MobFileStatus> fileInfos = new HashMap<MobFileName, MobFileStatus>();
+    private List<MobFileName> toBeDeleted;
 
     public SweepPartition(SweepPartitionId id, Context context) throws IOException {
       this.id = id;
       this.context = context;
-      this.toBeDeleted = new ArrayList<MobFilePath>();
+      this.toBeDeleted = new ArrayList<MobFileName>();
       memstore.setPartitionId(id);
       init();
     }
@@ -210,10 +212,10 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
         return;
       }
       // delete files that have no reference
-      Set<MobFilePath> filePaths = fileInfos.keySet();
-      Iterator<MobFilePath> iter = filePaths.iterator();
+      Set<MobFileName> filePaths = fileInfos.keySet();
+      Iterator<MobFileName> iter = filePaths.iterator();
       while (iter.hasNext()) {
-        MobFilePath path = iter.next();
+        MobFileName path = iter.next();
         MobFileStatus fileInfo = fileInfos.get(path);
         if (fileInfo.getReferenceCount() <= 0) {
           fs.delete(path.getAbsolutePath(familyDir), false);
@@ -241,7 +243,7 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
       if (null == values) {
         return;
       }
-      MobFilePath mobFilePath = MobFilePath.create(path.toString());
+      MobFileName mobFilePath = MobFileName.create(path.toString());
       LOG.info("[In reducer] The file path: " + path.toString());
       MobFileStatus info = fileInfos.get(mobFilePath);
       if (null == info) {
@@ -304,7 +306,7 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
     private String date;
     private String startKey;
 
-    public SweepPartitionId(MobFilePath filePath) {
+    public SweepPartitionId(MobFileName filePath) {
       this.date = filePath.getDate();
       this.startKey = filePath.getStartKey();
     }
@@ -315,7 +317,7 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
     }
 
     public static SweepPartitionId create(String key) {
-      return new SweepPartitionId(MobFilePath.create(key));
+      return new SweepPartitionId(MobFileName.create(key));
     }
 
     @Override
@@ -323,8 +325,8 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
       if (this == anObject) {
         return true;
       }
-      if (anObject instanceof MobFilePath) {
-        MobFilePath another = (MobFilePath) anObject;
+      if (anObject instanceof MobFileName) {
+        MobFileName another = (MobFileName) anObject;
         if (this.date.equals(another.getDate()) && this.startKey.equals(another.getStartKey())) {
           return true;
         }
@@ -352,7 +354,7 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
   private static class MobFileStatus {
     private int count;
     private int referenceCount;
-    private MobFilePath mobFilePath;
+    private MobFileName mobFilePath;
     private long length;
 
     private float invalidFileRatio = MobConstants.DEFAULT_MOB_COMPACTION_INVALID_FILE_RATIO;
@@ -364,7 +366,7 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
 
       this.length = status.getLen();
 
-      this.mobFilePath = MobFilePath.create(fileName);
+      this.mobFilePath = MobFileName.create(fileName);
       this.count = mobFilePath.getRecordCount();
       referenceCount = 0;
     }
@@ -404,7 +406,7 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
       return false;
     }
 
-    public MobFilePath getPath() {
+    public MobFileName getPath() {
       return mobFilePath;
     }
   }

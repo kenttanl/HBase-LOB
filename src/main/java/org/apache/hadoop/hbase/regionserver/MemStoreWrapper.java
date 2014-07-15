@@ -92,7 +92,7 @@ public class MemStoreWrapper {
         new Path(tempPathString), set.size(), mobFileStore.getColumnDescriptor()
             .getCompactionCompression(), partitionId.getStartKey());
 
-    Path targetPath = mobFileStore.getHomePath();
+    Path targetPath = mobFileStore.getPath();
 
     String relativePath = mobFileWriter.getPath().getName();
     LOG.info("Create temp files under " + mobFileWriter.getPath().toString());

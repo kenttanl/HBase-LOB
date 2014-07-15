@@ -139,7 +139,7 @@ public class MobUtils {
     expireDate = new Date(expireDate.getYear(), expireDate.getMonth(), expireDate.getDate());
     LOG.info("[MOB] File before " + expireDate.toGMTString() + " will be deleted!");
 
-    FileStatus[] stats = fs.listStatus(store.getHomePath());
+    FileStatus[] stats = fs.listStatus(store.getPath());
     if (null == stats) {
       // no file found
       return;
