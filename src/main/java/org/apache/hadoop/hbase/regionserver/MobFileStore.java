@@ -188,14 +188,9 @@ public class MobFileStore {
   public KeyValue resolve(KeyValue reference, boolean cacheBlocks) throws IOException {
     byte[] referenceValue = reference.getValue();
     String fileName = Bytes.toString(referenceValue);
-    KeyValue result = null;
     Path targetPath = new Path(mobFamilyPath, fileName);
     MobFile file = MobFile.create(fs, targetPath, conf, cacheConf);
-    try {
-      result = file.readKeyValue(reference, cacheBlocks);
-    } finally {
-      file.close();
-    }
+    KeyValue result = file.readKeyValue(reference, cacheBlocks);
 
     if (result == null) {
       LOG.warn("The KeyValue result is null, assemble a new KeyValue with the same row,family,"

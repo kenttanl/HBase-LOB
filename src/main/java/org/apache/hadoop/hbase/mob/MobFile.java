@@ -100,23 +100,6 @@ public class MobFile {
     return result;
   }
 
-  public String getName() {
-    return sf.getPath().getName();
-  }
-
-  public void open() throws IOException {
-    if (sf.getReader() == null) {
-      sf.createReader();
-    }
-  }
-
-  public void close() throws IOException {
-    if (null != sf) {
-      sf.closeReader(false);
-      sf = null;
-    }
-  }
-
   public static MobFile create(FileSystem fs, Path path, Configuration conf, CacheConfig cacheConf)
       throws IOException {
     StoreFile sf = new StoreFile(fs, path, conf, cacheConf, BloomType.NONE);
