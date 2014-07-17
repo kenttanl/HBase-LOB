@@ -45,9 +45,9 @@ import org.apache.hadoop.util.StringUtils;
  * This is the StoreFlusher used by the MOB store.
  * 
  */
-public class MobStoreFlusher extends StoreFlusher {
+public class DefaultMobStoreFlusher extends DefaultStoreFlusher {
 
-  private static final Log LOG = LogFactory.getLog(MobStoreFlusher.class);
+  private static final Log LOG = LogFactory.getLog(DefaultMobStoreFlusher.class);
   private final Object flushLock = new Object();
   private boolean isMob = false;
   private int mobCellSizeThreshold = 0;
@@ -56,7 +56,7 @@ public class MobStoreFlusher extends StoreFlusher {
   private Object lock = new Object();
   private Path mobHome;
 
-  public MobStoreFlusher(Configuration conf, Store store) {
+  public DefaultMobStoreFlusher(Configuration conf, Store store) {
     super(conf, store);
     isMob = MobUtils.isMobFamily(store.getFamily());
     mobCellSizeThreshold = conf.getInt(MobConstants.MOB_CELL_SIZE_THRESHOLD,
