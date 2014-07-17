@@ -126,22 +126,21 @@ public class MobStoreFlusher extends StoreFlusher {
 
           Iterator<KeyValue> iter = snapshot.iterator();
           int mobKVCount = 0;
+          long time = 0;
           while (iter != null && iter.hasNext()) {
             KeyValue kv = iter.next();
             if (kv.getValueLength() >= mobCellSizeThreshold && !MobUtils.isMobReferenceKeyValue(kv)
                 && kv.getTypeByte() == KeyValue.Type.Put.getCode()) {
               mobKVCount++;
+              time = time < kv.getTimestamp() ? kv.getTimestamp() : time;
             }
           }
-
-          mobFileWriter = mobFileStore.createWriterInTmp(new Date(), mobKVCount, store.getFamily()
+          mobFileWriter = mobFileStore.createWriterInTmp(new Date(time), mobKVCount, store.getFamily()
               .getCompression(), store.getRegionInfo().getStartKey());
           // the target path is {tableName}/.mob/{cfName}/mobFiles
           // the relative path is mobFiles
           String relativePath = mobFileWriter.getPath().getName();
-
           byte[] referenceValue = Bytes.toBytes(relativePath);
-
           try {
             List<Cell> kvs = new ArrayList<Cell>();
             boolean hasMore;
@@ -195,11 +194,11 @@ public class MobStoreFlusher extends StoreFlusher {
             // hfile. Also write current time in metadata as minFlushTime.
             // The hfile is current up to and including cacheFlushSeqNum.
             status.setStatus("Flushing " + store + ": appending metadata");
-            writer.appendMetadata(cacheFlushId, false);
             mobFileWriter.appendMetadata(cacheFlushId, false);
+            writer.appendMetadata(cacheFlushId, false);
             status.setStatus("Flushing " + store + ": closing flushed file");
-            writer.close();
             mobFileWriter.close();
+            writer.close();
 
             // commit the mob file from temp folder to target folder.
             mobFileStore.commitFile(mobFileWriter.getPath(), targetPath);
