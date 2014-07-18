@@ -59,10 +59,12 @@ public class SweepJob {
 
   private static final Log LOG = LogFactory.getLog(SweepJob.class);
 
-  public void sweep(MobFileStore store, Configuration conf) throws IOException,
+  public void sweep(MobFileStore store)
+      throws IOException,
       ClassNotFoundException, InterruptedException, KeeperException {
-    Configuration newConf = new Configuration(conf);
-    ZKUtil.applyClusterKeyToConf(newConf, conf.get(MobConstants.MOB_COMPACTION_ZOOKEEPER));
+    Configuration newConf = new Configuration(store.getConfiguration());
+    ZKUtil.applyClusterKeyToConf(newConf,
+        store.getConfiguration().get(MobConstants.MOB_COMPACTION_ZOOKEEPER));
     MobZookeeper zk = MobZookeeper.newInstance(newConf);
     try {
       if (!zk.lockStore(store.getTableName(), store.getFamilyName())) {
@@ -94,6 +96,7 @@ public class SweepJob {
         scan.setAttribute(MobConstants.MOB_SCAN_RAW, Bytes.toBytes(Boolean.TRUE));
         scan.setFilter(new ReferenceOnlyFilter());
         scan.setCaching(10000);
+        scan.setMaxVersions(store.getColumnDescriptor().getMaxVersions());
 
         Job job = prepareTableJob(store, scan, SweepMapper.class, Text.class, KeyValue.class,
             SweepReducer.class, Text.class, Writable.class, TextOutputFormat.class, newConf);

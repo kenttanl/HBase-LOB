@@ -111,6 +111,10 @@ public class MobFileStore {
     return family.getNameAsString();
   }
 
+  public Configuration getConfiguration() {
+    return this.conf;
+  }
+
   public StoreFile.Writer createWriterInTmp(Date date, int maxKeyCount,
       Compression.Algorithm compression, byte[] startKey) throws IOException {
     if (null == startKey || startKey.length == 0) {

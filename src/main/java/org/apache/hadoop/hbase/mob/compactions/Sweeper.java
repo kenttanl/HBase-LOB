@@ -57,7 +57,7 @@ public class Sweeper extends Configured implements Tool {
       MobFileStore store = MobFileStore.create(conf, fs, MobUtils.getMobHome(conf),
           TableName.valueOf(table), family);
       SweepJob job = new SweepJob(fs);
-      job.sweep(store, conf);
+      job.sweep(store);
     } finally {
       try {
         admin.close();

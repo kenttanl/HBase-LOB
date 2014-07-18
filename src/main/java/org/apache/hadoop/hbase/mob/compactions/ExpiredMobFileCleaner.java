@@ -53,6 +53,10 @@ public class ExpiredMobFileCleaner extends Configured implements Tool {
       if (!MobUtils.isMobFamily(family)) {
         throw new IOException("It's not a MOB column family");
       }
+      if (family.getMinVersions() > 0) {
+        throw new IOException(
+            "The minVersions of the column family is not 0, could not be handled by this cleaner");
+      }
       System.out.println("Cleaning the expired MOB files...");
       MobFileStore mobFileStore = MobFileStore.create(conf, fs, MobUtils.getMobHome(conf),
           TableName.valueOf(tableName), family);
