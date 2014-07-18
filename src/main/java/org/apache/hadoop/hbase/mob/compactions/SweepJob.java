@@ -46,7 +46,7 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.OutputFormat;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
-import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
+import org.apache.hadoop.mapreduce.lib.output.NullOutputFormat;
 import org.apache.zookeeper.KeeperException;
 
 public class SweepJob {
@@ -99,7 +99,7 @@ public class SweepJob {
         scan.setMaxVersions(store.getColumnDescriptor().getMaxVersions());
 
         Job job = prepareTableJob(store, scan, SweepMapper.class, Text.class, KeyValue.class,
-            SweepReducer.class, Text.class, Writable.class, TextOutputFormat.class, newConf);
+            SweepReducer.class, Text.class, Writable.class, NullOutputFormat.class, newConf);
         job.getConfiguration().set(TableInputFormat.SCAN_COLUMN_FAMILY, store.getFamilyName());
         /**
          * Record the compaction begin time

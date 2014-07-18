@@ -153,7 +153,6 @@ public class SweepReducer extends Reducer<Text, KeyValue, Writable, Writable> {
       if (null != partition) {
         partition.close();
       }
-      context.write(new Text("Reducer task is done"), new Text(""));
     } finally {
       cleanup(context);
     }
