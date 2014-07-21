@@ -120,8 +120,8 @@ public class MemStoreWrapper {
     scanner.seek(KeyValue.createFirstOnRow(new byte[] {}));
     kv = null;
     while (null != (kv = scanner.next())) {
-      kv.setMvccVersion(0);
-      List<Tag> existingTags = kv.getTags();
+      List<Tag> existingTags = Tag
+          .asList(kv.getTagsArray(), kv.getTagsOffset(), kv.getTagsLength());
       if (existingTags.isEmpty()) {
         existingTags = new ArrayList<Tag>();
       }

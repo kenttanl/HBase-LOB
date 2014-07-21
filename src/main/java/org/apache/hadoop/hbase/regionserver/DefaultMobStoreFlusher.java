@@ -147,7 +147,8 @@ public class DefaultMobStoreFlusher extends DefaultStoreFlusher {
 
                       // append the tag to the KeyValue.
                       // The key is same, the value is the filename of the mob file
-                      List<Tag> existingTags = kv.getTags();
+                      List<Tag> existingTags = Tag
+                          .asList(kv.getTagsArray(), kv.getTagsOffset(), kv.getTagsLength());
                       if (existingTags.isEmpty()) {
                         existingTags = new ArrayList<Tag>();
                       }
