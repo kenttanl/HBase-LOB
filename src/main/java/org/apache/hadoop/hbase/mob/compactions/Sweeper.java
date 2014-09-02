@@ -20,6 +20,7 @@ package org.apache.hadoop.hbase.mob.compactions;
 
 import java.io.IOException;
 
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
@@ -29,7 +30,6 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.mob.MobUtils;
-import org.apache.hadoop.hbase.regionserver.MobFileStore;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
@@ -37,27 +37,45 @@ import org.apache.zookeeper.KeeperException;
 
 import com.google.protobuf.ServiceException;
 
+/**
+ * The sweep tool. It deletes the mob files that are not used and merges the small mob files to
+ * bigger ones. Each running of this sweep tool is only handle one column family. Each running on
+ * the same column family are mutually exclusive. And the major compaction and sweep tool on the
+ * same column family are mutually exclusive too.
+ */
+@InterfaceAudience.Public
 public class Sweeper extends Configured implements Tool {
 
-  public void sweepFamily(String table, String familyName) throws IOException, InterruptedException,
+  /**
+   * Sweeps the mob files on one column family. It deletes the unused mob files and merges
+   * the small mob files into bigger ones.
+   * @param tableName The current table name in string format.
+   * @param familyName The column family name.
+   * @throws IOException
+   * @throws InterruptedException
+   * @throws ClassNotFoundException
+   * @throws KeeperException
+   * @throws ServiceException
+   */
+  void sweepFamily(String tableName, String familyName) throws IOException, InterruptedException,
       ClassNotFoundException, KeeperException, ServiceException {
     Configuration conf = getConf();
+    // make sure the target HBase exists.
     HBaseAdmin.checkHBaseAvailable(conf);
     HBaseAdmin admin = new HBaseAdmin(conf);
     try {
       FileSystem fs = FileSystem.get(conf);
-      if (!admin.tableExists(table)) {
-        throw new IOException("Table " + table + " not exist");
+      if (!admin.tableExists(tableName)) {
+        throw new IOException("Table " + tableName + " not exist");
       }
-      HTableDescriptor htd = admin.getTableDescriptor(Bytes.toBytes(table));
+      HTableDescriptor htd = admin.getTableDescriptor(Bytes.toBytes(tableName));
       HColumnDescriptor family = htd.getFamily(Bytes.toBytes(familyName));
       if (!MobUtils.isMobFamily(family)) {
         throw new IOException("It's not a MOB column family");
       }
-      MobFileStore store = MobFileStore.create(conf, fs, MobUtils.getMobHome(conf),
-          TableName.valueOf(table), family);
-      SweepJob job = new SweepJob(fs);
-      job.sweep(store);
+      SweepJob job = new SweepJob(conf, fs);
+      // Run the sweeping
+      job.sweep(TableName.valueOf(tableName), family);
     } finally {
       try {
         admin.close();

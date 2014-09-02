@@ -18,11 +18,31 @@
  */
 package org.apache.hadoop.hbase.mob.compactions;
 
+import org.apache.hadoop.classification.InterfaceAudience;
+
+/**
+ * The counter used in sweep job.
+ */
+@InterfaceAudience.Private
 public enum SweepCounter {
+
+  /**
+   * How many files are read. 
+   */
   INPUT_FILE_COUNT,
+
+  /**
+   * How many files need to be merged or cleaned.
+   */
   FILE_TO_BE_MERGE_OR_CLEAN,
-  FILE_NO_REFERENCE,
+
+  /**
+   * How many files are left after merging.
+   */
   FILE_AFTER_MERGE_OR_CLEAN,
+
+  /**
+   * How many records are updated.
+   */
   RECORDS_UPDATED,
-  DISK_SPACE_RECLAIMED
 }

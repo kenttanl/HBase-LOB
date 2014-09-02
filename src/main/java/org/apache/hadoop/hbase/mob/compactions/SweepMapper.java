@@ -20,6 +20,7 @@ package org.apache.hadoop.hbase.mob.compactions;
 
 import java.io.IOException;
 
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
@@ -27,6 +28,12 @@ import org.apache.hadoop.hbase.mapreduce.TableMapper;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.io.Text;
 
+/**
+ * The mapper of a sweep job.
+ * The key of the output is the value of a KeyValue which is actually a mob file name,
+ * and the value is this KeyValue.
+ */
+@InterfaceAudience.Private
 public class SweepMapper extends TableMapper<Text, KeyValue> {
 
   @Override
@@ -36,9 +43,11 @@ public class SweepMapper extends TableMapper<Text, KeyValue> {
       KeyValue[] kvList = columns.raw();
       if (kvList != null && kvList.length > 0) {
         for (KeyValue kv : kvList) {
-          String fileName = Bytes.toString(kv.getValue());
-          KeyValue keyOnly = kv.createKeyOnly(false);
-          context.write(new Text(fileName), keyOnly);
+          if (kv.getValueLength() > Bytes.SIZEOF_LONG) {
+            String fileName = Bytes.toString(kv.getValueArray(), kv.getValueOffset()
+                + Bytes.SIZEOF_LONG, kv.getValueLength() - Bytes.SIZEOF_LONG);
+            context.write(new Text(fileName), kv);
+          }
         }
       }
     }

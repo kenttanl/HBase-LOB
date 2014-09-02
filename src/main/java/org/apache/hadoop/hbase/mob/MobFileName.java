@@ -18,93 +18,119 @@
  */
 package org.apache.hadoop.hbase.mob;
 
-import java.security.InvalidParameterException;
-import java.util.Date;
+import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.hbase.util.MD5Hash;
 
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hbase.util.Bytes;
-
+/**
+ * The mob file name.
+ * It consists of a md5 of a start key, a date and an uuid.
+ * It looks like md5(start) + date + uuid.
+ * <ol>
+ * <li>0-31 characters: md5 hex string of a start key. Since the length of the start key is not
+ * fixed, have to use the md5 instead which has a fix length.</li>
+ * <li>32-39 characters: a string of a date with format yyyymmdd. The date is the latest timestamp
+ * of cells in this file</li>
+ * <li>the remaining characters: the uuid.</li>
+ * </ol>
+ * Using md5 hex string of start key as the prefix of file name makes files with the same start
+ * key unique, they're different from the ones with other start keys
+ * The cells come from different regions might be in the same mob file by region split,
+ * this is allowed.
+ * Has the latest timestamp of cells in the file name in order to clean the expired mob files by
+ * TTL easily. If this timestamp is older than the TTL, it's regarded as expired.
+ */
+@InterfaceAudience.Private
 public class MobFileName {
 
-  private String date;
-  private int startKey;
-  private String uuid;
-  private int count;
+  private final String date;
+  private final String startKey;
+  private final String uuid;
+  private final String fileName;
 
-  static public MobFileName create(String startKey, int count, Date date, String uuid) {
-    String dateString = MobUtils.formatDate(date);
-    return new MobFileName(dateString, startKey, count, uuid);
-  }
-  
-  static public MobFileName create(String startKey, int count, String date, String uuid) {
-    return new MobFileName(date, startKey, count, uuid);
-  }
-
-  static public MobFileName create(String fileName) {
-    String date = fileName.substring(0, 8);
-    int startKey = hexString2Int(fileName.substring(8, 16));
-    int count = hexString2Int(fileName.substring(16, 24));
-    String uuid = fileName.substring(24);
-    return new MobFileName(date, startKey, count, uuid);
-  }
-
-  public static String int2HexString(int i) {
-    int shift = 4;
-    char[] buf = new char[8];
-
-    int charPos = 8;
-    int radix = 1 << shift;
-    int mask = radix - 1;
-    do {
-      buf[--charPos] = digits[i & mask];
-      i >>>= shift;
-    } while (charPos > 0);
-
-    return new String(buf);
-  }
-
-  public static int hexString2Int(String hex) {
-    byte[] buffer = Bytes.toBytes(hex);
-    if (buffer.length != 8) {
-      throw new InvalidParameterException("hexString2Int length not valid");
-    }
-
-    for (int i = 0; i < buffer.length; i++) {
-      byte ch = buffer[i];
-      if (ch >= 'a' && ch <= 'z') {
-        buffer[i] = (byte) (ch - 'a' + 10);
-      } else {
-        buffer[i] = (byte) (ch - '0');
-      }
-    }
-
-    buffer[0] = (byte) ((buffer[0] << 4) ^ buffer[1]);
-    buffer[1] = (byte) ((buffer[2] << 4) ^ buffer[3]);
-    buffer[2] = (byte) ((buffer[4] << 4) ^ buffer[5]);
-    buffer[3] = (byte) ((buffer[6] << 4) ^ buffer[7]);
-    return Bytes.toInt(buffer, 0, 4);
-  }
-
-  final static char[] digits = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c',
-      'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u',
-      'v', 'w', 'x', 'y', 'z' };
-
-  public MobFileName(String date, String startKey, int count, String uuid) {
-    this(date, hexString2Int(startKey), count, uuid);
-  }
-
-  public MobFileName(String date, int startKey, int count, String uuid) {
-
-    this.startKey = startKey;
-    this.count = count;
+  /**
+   * @param startKey
+   *          The start key.
+   * @param date
+   *          The string of the latest timestamp of cells in this file, the format is yyyymmdd.
+   * @param uuid
+   *          The uuid
+   */
+  private MobFileName(byte[] startKey, String date, String uuid) {
+    this.startKey = MD5Hash.getMD5AsHex(startKey, 0, startKey.length);
     this.uuid = uuid;
     this.date = date;
+    this.fileName = this.startKey + date + uuid;
   }
 
+  /**
+   * @param startKey
+   *          The md5 hex string of the start key.
+   * @param date
+   *          The string of the latest timestamp of cells in this file, the format is yyyymmdd.
+   * @param uuid
+   *          The uuid
+   */
+  private MobFileName(String startKey, String date, String uuid) {
+    this.startKey = startKey;
+    this.uuid = uuid;
+    this.date = date;
+    this.fileName = this.startKey + date + uuid;
+  }
+
+  /**
+   * Creates an instance of MobFileName
+   *
+   * @param startKey
+   *          The start key.
+   * @param date
+   *          The string of the latest timestamp of cells in this file, the format is yyyymmdd.
+   * @param uuid The uuid.
+   * @return An instance of a MobFileName.
+   */
+  public static MobFileName create(byte[] startKey, String date, String uuid) {
+    return new MobFileName(startKey, date, uuid);
+  }
+
+  /**
+   * Creates an instance of MobFileName
+   *
+   * @param startKey
+   *          The md5 hex string of the start key.
+   * @param date
+   *          The string of the latest timestamp of cells in this file, the format is yyyymmdd.
+   * @param uuid The uuid.
+   * @return An instance of a MobFileName.
+   */
+  public static MobFileName create(String startKey, String date, String uuid) {
+    return new MobFileName(startKey, date, uuid);
+  }
+
+  /**
+   * Creates an instance of MobFileName.
+   * @param fileName The string format of a file name.
+   * @return An instance of a MobFileName.
+   */
+  public static MobFileName create(String fileName) {
+    // The format of a file name is md5HexString(0-31bytes) + date(32-39bytes) + UUID
+    // The date format is yyyyMMdd
+    String startKey = fileName.substring(0, 32);
+    String date = fileName.substring(32, 40);
+    String uuid = fileName.substring(40);
+    return new MobFileName(startKey, date, uuid);
+  }
+
+  /**
+   * Gets the hex string of the md5 for a start key.
+   * @return The hex string of the md5 for a start key.
+   */
   public String getStartKey() {
-    return int2HexString(startKey);
+    return startKey;
   }
 
+  /**
+   * Gets the date string. Its format is yyyymmdd.
+   * @return The date string.
+   */
   public String getDate() {
     return this.date;
   }
@@ -112,10 +138,9 @@ public class MobFileName {
   @Override
   public int hashCode() {
     StringBuilder builder = new StringBuilder();
-    builder.append(date);
     builder.append(startKey);
+    builder.append(date);
     builder.append(uuid);
-    builder.append(count);
     return builder.toString().hashCode();
   }
 
@@ -126,23 +151,19 @@ public class MobFileName {
     }
     if (anObject instanceof MobFileName) {
       MobFileName another = (MobFileName) anObject;
-      if (this.date.equals(another.date) && this.startKey == another.startKey
-          && this.uuid.equals(another.uuid) && this.count == another.count) {
+      if (this.startKey.equals(another.startKey) && this.date.equals(another.date)
+          && this.uuid.equals(another.uuid)) {
         return true;
       }
     }
     return false;
   }
 
-  public int getRecordCount() {
-    return this.count;
-  }
-
-  public Path getAbsolutePath(Path rootPath) {
-    return new Path(rootPath, getFileName());
-  }
-
+  /**
+   * Gets the file name.
+   * @return The file name.
+   */
   public String getFileName() {
-    return this.date + int2HexString(this.startKey) + int2HexString(this.count) + this.uuid;
+    return this.fileName;
   }
 }

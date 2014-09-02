@@ -16,25 +16,41 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hbase.mob.compactions;
+package org.apache.hadoop.hbase.mob;
 
 import org.apache.hadoop.classification.InterfaceAudience;
-import org.apache.hadoop.hbase.KeyValue;
-import org.apache.hadoop.hbase.mob.MobFileName;
-import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapreduce.Partitioner;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 
 /**
- * The partitioner for the sweep job.
+ * The cache configuration for the mob.
  */
 @InterfaceAudience.Private
-public class MobFilePathHashPartitioner extends Partitioner<Text, KeyValue> {
+public class MobCacheConfig extends CacheConfig {
 
-  @Override
-  public int getPartition(Text fileName, KeyValue kv, int numPartitions) {
-    MobFileName mobFileName = MobFileName.create(fileName.toString());
-    String date = mobFileName.getDate();
-    int hash = date.hashCode();
-    return (hash & Integer.MAX_VALUE) % numPartitions;
+  private static MobFileCache mobFileCache;
+
+  public MobCacheConfig(Configuration conf, HColumnDescriptor family) {
+    super(conf, family);
+    instantiateMobFileCache(conf);
+  }
+
+  /**
+   * Instantiates the MobFileCache.
+   * @param conf The current configuration.
+   */
+  public static synchronized void instantiateMobFileCache(Configuration conf) {
+    if (mobFileCache == null) {
+      mobFileCache = new MobFileCache(conf);
+    }
+  }
+
+  /**
+   * Gets the MobFileCache.
+   * @return The MobFileCache.
+   */
+  public MobFileCache getMobFileCache() {
+    return mobFileCache;
   }
 }

@@ -19,29 +19,46 @@
 package org.apache.hadoop.hbase.regionserver;
 
 import java.io.IOException;
-import java.util.List;
+import java.util.Date;
 import java.util.NavigableSet;
 import java.util.UUID;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.io.compress.Compression;
+import org.apache.hadoop.hbase.io.hfile.CacheConfig;
+import org.apache.hadoop.hbase.io.hfile.HFile;
+import org.apache.hadoop.hbase.io.hfile.HFileContext;
+import org.apache.hadoop.hbase.io.hfile.HFileContextBuilder;
+import org.apache.hadoop.hbase.mob.MobCacheConfig;
+import org.apache.hadoop.hbase.mob.MobConstants;
+import org.apache.hadoop.hbase.mob.MobFile;
+import org.apache.hadoop.hbase.mob.MobFileName;
 import org.apache.hadoop.hbase.mob.MobUtils;
-import org.apache.hadoop.hbase.mob.MobZookeeper;
-import org.apache.hadoop.hbase.regionserver.compactions.CompactionContext;
-import org.apache.zookeeper.KeeperException;
+import org.apache.hadoop.hbase.util.Bytes;
 
 public class HMobStore extends HStore {
 
-  private MobFileStore mobFileStore;
+  private MobCacheConfig mobCacheConfig;
+  private Path homePath;
+  private Path mobFamilyPath;
+  private Configuration conf;
+  private HRegion region;
 
   public HMobStore(final HRegion region, final HColumnDescriptor family,
       final Configuration confParam) throws IOException {
     super(region, family, confParam);
-    Path home = MobUtils.getMobHome(region.conf);
-    mobFileStore = MobFileStore.create(region.conf, region.getFilesystem(), home,
-        this.getTableName(), this.getFamily());
+    this.region = region;
+    this.conf = region.conf;
+    this.mobCacheConfig = new MobCacheConfig(conf, family);
+    this.homePath = MobUtils.getMobHome(conf);
+    this.mobFamilyPath = MobUtils.getMobFamilyPath(conf, this.getTableName(),
+        family.getNameAsString());
   }
 
   @Override
@@ -54,77 +71,167 @@ public class HMobStore extends HStore {
         scanner = this.getCoprocessorHost().preStoreScannerOpen(this, scan, targetCols);
       }
       if (scanner == null) {
-        scanner = scan.isReversed() ? new MobReversedStoreScanner(this, getScanInfo(), scan,
-            targetCols, readPt, mobFileStore) : new MobStoreScanner(this, getScanInfo(), scan,
-            targetCols, readPt, mobFileStore);
+        scanner = scan.isReversed() ? new ReversedMobStoreScanner(this, getScanInfo(), scan,
+            targetCols, readPt) : new MobStoreScanner(this, getScanInfo(), scan, targetCols, readPt);
       }
       return scanner;
     } finally {
       lock.readLock().unlock();
     }
   }
+  
+  /**
+   * Gets the temp directory.
+   * @return The temp directory.
+   */
+  private Path getTempDir() {
+    return new Path(homePath, MobConstants.TEMP_DIR_NAME);
+  }
 
-  @Override
-  public List<StoreFile> compact(CompactionContext compaction) throws IOException {
-    // If it's major compaction, try to find whether there's a sweeper is running
-    // If yes, change the major compaction to a minor one.
-    if (compaction.getRequest().isMajor() && MobUtils.isMobFamily(getFamily())) {
-      MobZookeeper zk = null;
-      try {
-        zk = MobZookeeper.newInstance(this.getHRegion().conf);
-      } catch (KeeperException e) {
-        LOG.error("Cannot connect to the zookeeper, ready to perform the minor compaction instead",
-            e);
-        // change the major compaction into a minor one
-        compaction.getRequest().setIsMajor(false);
-        return super.compact(compaction);
+  /**
+   * Creates the temp directory of mob files for flushing.
+   * @param date The latest date of cells in the flushing.
+   * @param maxKeyCount The key count.
+   * @param compression The compression algorithm.
+   * @param startKey The start key.
+   * @return The writer for the mob file.
+   * @throws IOException
+   */
+  public StoreFile.Writer createWriterInTmp(Date date, long maxKeyCount,
+      Compression.Algorithm compression, byte[] startKey) throws IOException {
+    if (startKey == null) {
+      startKey = HConstants.EMPTY_START_ROW;
+    }
+    Path path = getTempDir();
+    return createWriterInTmp(MobUtils.formatDate(date), path, maxKeyCount, compression, startKey);
+  }
+
+  /**
+   * Creates the temp directory of mob files for flushing.
+   * @param date The date string, its format is yyyymmmdd.
+   * @param basePath The basic path for a temp directory.
+   * @param maxKeyCount The key count.
+   * @param compression The compression algorithm.
+   * @param startKey The start key.
+   * @return The writer for the mob file.
+   * @throws IOException
+   */
+  public StoreFile.Writer createWriterInTmp(String date, Path basePath, long maxKeyCount,
+      Compression.Algorithm compression, byte[] startKey) throws IOException {
+    MobFileName mobFileName = MobFileName.create(startKey, date, UUID.randomUUID()
+        .toString().replaceAll("-", ""));
+    final CacheConfig writerCacheConf = mobCacheConfig;
+    HFileContext hFileContext = new HFileContextBuilder().withCompression(compression)
+        .withIncludesMvcc(false).withIncludesTags(true)
+        .withChecksumType(HFile.DEFAULT_CHECKSUM_TYPE)
+        .withBytesPerCheckSum(HFile.DEFAULT_BYTES_PER_CHECKSUM)
+        .withBlockSize(getFamily().getBlocksize())
+        .withHBaseCheckSum(true).withDataBlockEncoding(getFamily().getDataBlockEncoding()).build();
+
+    StoreFile.Writer w = new StoreFile.WriterBuilder(conf, writerCacheConf, region.getFilesystem())
+        .withFilePath(new Path(basePath, mobFileName.getFileName()))
+        .withComparator(KeyValue.COMPARATOR).withBloomType(BloomType.NONE)
+        .withMaxKeyCount(maxKeyCount).withFileContext(hFileContext).build();
+    return w;
+  }
+
+  /**
+   * Commits the mob file.
+   * @param sourceFile The source file.
+   * @param targetPath The directory path where the source file is renamed to.
+   * @throws IOException
+   */
+  public void commitFile(final Path sourceFile, Path targetPath) throws IOException {
+    if (sourceFile == null) {
+      return;
+    }
+    Path dstPath = new Path(targetPath, sourceFile.getName());
+    validateMobFile(sourceFile);
+    String msg = "Renaming flushed file from " + sourceFile + " to " + dstPath;
+    LOG.info(msg);
+    Path parent = dstPath.getParent();
+    if (!region.getFilesystem().exists(parent)) {
+      region.getFilesystem().mkdirs(parent);
+    }
+    if (!region.getFilesystem().rename(sourceFile, dstPath)) {
+      throw new IOException("Failed rename of " + sourceFile + " to " + dstPath);
+    }
+  }
+
+  /**
+   * Validates a mob file by opening and closing it.
+   *
+   * @param path the path to the mob file
+   */
+  private void validateMobFile(Path path) throws IOException {
+    StoreFile storeFile = null;
+    try {
+      storeFile =
+          new StoreFile(region.getFilesystem(), path, conf, this.mobCacheConfig, BloomType.NONE);
+      storeFile.createReader();
+    } catch (IOException e) {
+      LOG.error("Fail to open mob file[" + path + "], keep it in temp directory.", e);
+      throw e;
+    } finally {
+      if (storeFile != null) {
+        storeFile.closeReader(false);
       }
-      boolean major = false;
-      String compactionName = UUID.randomUUID().toString().replaceAll("-", "");
+    }
+  }
+
+  /**
+   * Reads the cell from the mob file.
+   * @param reference The cell found in the HBase, its value is a path to a mob file.
+   * @param cacheBlocks Whether the scanner should cache blocks.
+   * @return The cell found in the mob file.
+   * @throws IOException
+   */
+  public Cell resolve(KeyValue reference, boolean cacheBlocks) throws IOException {
+    Cell result = null;
+    if (reference.getValueLength() > Bytes.SIZEOF_LONG) {
+      String fileName = Bytes.toString(reference.getValueArray(), reference.getValueOffset()
+          + Bytes.SIZEOF_LONG, reference.getValueLength() - Bytes.SIZEOF_LONG);
+      Path targetPath = new Path(mobFamilyPath, fileName);
+      MobFile file = null;
       try {
-        if (zk.lockStore(getTableName().getNameAsString(), getFamily().getNameAsString())) {
-          try {
-            LOG.info("Obtain the lock for the store[" + this
-                + "], ready to perform the major compaction");
-            // check the sweeper znode
-            boolean hasSweeper = zk.isSweeperZNodeExist(getTableName().getNameAsString(),
-                getFamily().getNameAsString());
-            if (!hasSweeper) {
-              // if not, add a child region znode to the family znode
-              major = zk.addMajorCompactionZNode(getTableName().getNameAsString(), getFamily()
-                  .getNameAsString(), compactionName);
-            }
-          } catch (Exception e) {
-            LOG.error("Fail to handle the Zookeeper", e);
-          } finally {
-            zk.unlockStore(getTableName().getNameAsString(), getFamily().getNameAsString());
-          }
-        }
-        try {
-          if (major) {
-            return super.compact(compaction);
-          } else {
-            LOG.info("Cannot obtain the lock or there's another major compaction for the store["
-                + this + "], ready to perform the minor compaction instead");
-            // change the major compaction into a minor one
-            compaction.getRequest().setIsMajor(false);
-            return super.compact(compaction);
-          }
-        } finally {
-          if (major) {
-            try {
-              zk.deleteMajorCompactionZNode(getTableName().getNameAsString(), getFamily()
-                  .getNameAsString(), compactionName);
-            } catch (KeeperException e) {
-              LOG.error("Fail to delete the compaction znode" + compactionName, e);
-            }
-          }
-        }
+        file = mobCacheConfig.getMobFileCache().openFile(region.getFilesystem(), targetPath,
+            mobCacheConfig);
+        result = file.readCell(reference, cacheBlocks);
+      } catch (IOException e) {
+        LOG.error("Fail to open/read the mob file " + targetPath.toString(), e);
+      } catch (NullPointerException e) {
+        // When delete the file during the scan, the hdfs getBlockRange will
+        // throw NullPointerException, catch it and manage it.
+        LOG.error("Fail to read the mob file " + targetPath.toString()
+            + " since it's already deleted", e);
       } finally {
-        zk.close();
+        if (file != null) {
+          mobCacheConfig.getMobFileCache().closeFile(file);
+        }
       }
     } else {
-      return super.compact(compaction);
+      LOG.warn("Invalid reference to mob, " + reference.getValueLength() + " bytes is too short");
     }
+
+    if (result == null) {
+      LOG.warn("The KeyValue result is null, assemble a new KeyValue with the same row,family,"
+          + "qualifier,timestamp,type and tags but with an empty value to return.");
+      result = new KeyValue(reference.getRowArray(), reference.getRowOffset(),
+          reference.getRowLength(), reference.getFamilyArray(), reference.getFamilyOffset(),
+          reference.getFamilyLength(), reference.getQualifierArray(),
+          reference.getQualifierOffset(), reference.getQualifierLength(), reference.getTimestamp(),
+          KeyValue.Type.codeToType(reference.getTypeByte()), HConstants.EMPTY_BYTE_ARRAY,
+          0, 0, reference.getTagsArray(), reference.getTagsOffset(),
+          reference.getTagsLength());
+    }
+    return result;
+  }
+
+  /**
+   * Gets the mob file path.
+   * @return The mob file path.
+   */
+  public Path getPath() {
+    return mobFamilyPath;
   }
 }

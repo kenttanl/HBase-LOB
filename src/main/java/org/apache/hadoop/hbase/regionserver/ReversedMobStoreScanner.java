@@ -22,24 +22,34 @@ import java.io.IOException;
 import java.util.List;
 import java.util.NavigableSet;
 
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.KeyValueUtil;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.mob.MobUtils;
 
-public class MobReversedStoreScanner extends ReversedStoreScanner {
+/**
+ * ReversedMobStoreScanner extends from ReversedStoreScanner, and is used to support
+ * reversed scanning in both the memstore and the MOB store.
+ *
+ */
+@InterfaceAudience.Private
+public class ReversedMobStoreScanner extends ReversedStoreScanner {
 
   private boolean cacheMobBlocks = false;
-  private MobFileStore mobFileStore;
 
-  MobReversedStoreScanner(Store store, ScanInfo scanInfo, Scan scan, NavigableSet<byte[]> columns,
-      long readPt, MobFileStore mobFileStore) throws IOException {
+  ReversedMobStoreScanner(Store store, ScanInfo scanInfo, Scan scan, NavigableSet<byte[]> columns,
+      long readPt) throws IOException {
     super(store, scanInfo, scan, columns, readPt);
     cacheMobBlocks = MobUtils.isCacheMobBlocks(scan);
-    this.mobFileStore = mobFileStore;
   }
 
+  /**
+   * Firstly reads the cells from the HBase. If the cell are a reference cell (which has the
+   * reference tag), the scanner need seek this cell from the mob file, and use the cell found
+   * from the mob file as the result.
+   */
   @Override
   public boolean next(List<Cell> outResult, int limit) throws IOException {
     boolean result = super.next(outResult, limit);
@@ -48,11 +58,12 @@ public class MobReversedStoreScanner extends ReversedStoreScanner {
       if (outResult.isEmpty()) {
         return result;
       }
+      HMobStore mobStore = (HMobStore) store;
       for (int i = 0; i < outResult.size(); i++) {
         Cell cell = outResult.get(i);
-        KeyValue kv = KeyValueUtil.ensureKeyValue(cell);
-        if (MobUtils.isMobReferenceKeyValue(kv)) {
-          outResult.set(i, mobFileStore.resolve(kv, cacheMobBlocks));
+        if (MobUtils.isMobReferenceCell(cell)) {
+          KeyValue kv = KeyValueUtil.ensureKeyValue(cell);
+          outResult.set(i, mobStore.resolve(kv, cacheMobBlocks));
         }
       }
     }

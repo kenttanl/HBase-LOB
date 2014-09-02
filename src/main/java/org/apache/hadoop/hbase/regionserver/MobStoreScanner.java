@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.NavigableSet;
 
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.KeyValueUtil;
@@ -31,47 +32,24 @@ import org.apache.hadoop.hbase.mob.MobUtils;
 /**
  * Scanner scans both the memstore and the MOB Store. Coalesce KeyValue stream into List<KeyValue>
  * for a single row.
- * 
+ *
  */
+@InterfaceAudience.Private
 public class MobStoreScanner extends StoreScanner {
 
   private boolean cacheMobBlocks = false;
-  private MobFileStore mobFileStore;
-
-  protected MobStoreScanner(Store store, boolean cacheBlocks, Scan scan,
-      final NavigableSet<byte[]> columns, long ttl, int minVersions, long readPt,
-      MobFileStore mobFileStore) {
-    super(store, cacheBlocks, scan, columns, ttl, minVersions, readPt);
-    cacheMobBlocks = MobUtils.isCacheMobBlocks(scan);
-    this.mobFileStore = mobFileStore;
-  }
 
   public MobStoreScanner(Store store, ScanInfo scanInfo, Scan scan,
-      List<? extends KeyValueScanner> scanners, ScanType scanType, long smallestReadPoint,
-      long earliestPutTs, MobFileStore mobFileStore) throws IOException {
-    super(store, scanInfo, scan, scanners, scanType, smallestReadPoint, earliestPutTs);
-    cacheMobBlocks = MobUtils.isCacheMobBlocks(scan);
-    this.mobFileStore = mobFileStore;
-  }
-
-  public MobStoreScanner(Store store, ScanInfo scanInfo, Scan scan,
-      List<? extends KeyValueScanner> scanners, long smallestReadPoint, long earliestPutTs,
-      byte[] dropDeletesFromRow, byte[] dropDeletesToRow, MobFileStore mobFileStore)
-      throws IOException {
-    super(store, scanInfo, scan, scanners, smallestReadPoint, earliestPutTs, dropDeletesFromRow,
-        dropDeletesToRow);
-    cacheMobBlocks = MobUtils.isCacheMobBlocks(scan);
-    this.mobFileStore = mobFileStore;
-  }
-
-  public MobStoreScanner(Store store, ScanInfo scanInfo, Scan scan,
-      final NavigableSet<byte[]> columns, long readPt, MobFileStore mobFileStore)
-      throws IOException {
+      final NavigableSet<byte[]> columns, long readPt) throws IOException {
     super(store, scanInfo, scan, columns, readPt);
     cacheMobBlocks = MobUtils.isCacheMobBlocks(scan);
-    this.mobFileStore = mobFileStore;
   }
 
+  /**
+   * Firstly reads the cells from the HBase. If the cell are a reference cell (which has the
+   * reference tag), the scanner need seek this cell from the mob file, and use the cell found
+   * from the mob file as the result.
+   */
   @Override
   public boolean next(List<Cell> outResult, int limit) throws IOException {
     boolean result = super.next(outResult, limit);
@@ -80,11 +58,12 @@ public class MobStoreScanner extends StoreScanner {
       if (outResult.isEmpty()) {
         return result;
       }
+      HMobStore mobStore = (HMobStore) store;
       for (int i = 0; i < outResult.size(); i++) {
         Cell cell = outResult.get(i);
-        KeyValue kv = KeyValueUtil.ensureKeyValue(cell);
-        if (MobUtils.isMobReferenceKeyValue(kv)) {
-          outResult.set(i, mobFileStore.resolve(kv, cacheMobBlocks));
+        if (MobUtils.isMobReferenceCell(cell)) {
+          KeyValue kv = KeyValueUtil.ensureKeyValue(cell);
+          outResult.set(i, mobStore.resolve(kv, cacheMobBlocks));
         }
       }
     }

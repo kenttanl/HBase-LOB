@@ -20,47 +20,69 @@ package org.apache.hadoop.hbase.mob.compactions;
 
 import java.io.IOException;
 
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.mob.MobUtils;
-import org.apache.hadoop.hbase.regionserver.MobFileStore;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
 import com.google.protobuf.ServiceException;
 
+/**
+ * The cleaner to delete the expired MOB files.
+ */
+@InterfaceAudience.Private
 public class ExpiredMobFileCleaner extends Configured implements Tool {
 
-  public void cleanExpiredMobFiles(String tableName, String familyName) throws ServiceException,
+  /**
+   * Cleans the MOB files when they're expired and their min versions are 0.
+   * If the latest timestamp of Cells in a MOB file is older than the TTL in the column family,
+   * it's regarded as expired. This cleaner deletes them.
+   * Users are allowed to configure a clean delay (hbase.mob.cleaner.delay) in the configuration
+   * which allows the file is deleted when (latestTimeStamp < Now - TTL - delay).
+   * @param tableName The current table name.
+   * @param familyName The current family name.
+   * @throws ServiceException
+   * @throws IOException
+   */
+  void cleanExpiredMobFiles(String tableName, String familyName) throws ServiceException,
       IOException {
     Configuration conf = getConf();
     HBaseAdmin.checkHBaseAvailable(conf);
+    TableName tn = TableName.valueOf(tableName);
     HBaseAdmin admin = new HBaseAdmin(conf);
     try {
       FileSystem fs = FileSystem.get(conf);
-      if (!admin.tableExists(tableName)) {
+      if (!admin.tableExists(tn)) {
         throw new IOException("Table " + tableName + " not exist");
       }
-      HTableDescriptor htd = admin.getTableDescriptor(Bytes.toBytes(tableName));
+      HTableDescriptor htd = admin.getTableDescriptor(tn);
       HColumnDescriptor family = htd.getFamily(Bytes.toBytes(familyName));
       if (!MobUtils.isMobFamily(family)) {
         throw new IOException("It's not a MOB column family");
       }
-      if (family.getMinVersions() > 0) {
+      if(family.getMinVersions() > 0) {
         throw new IOException(
             "The minVersions of the column family is not 0, could not be handled by this cleaner");
       }
       System.out.println("Cleaning the expired MOB files...");
-      MobFileStore mobFileStore = MobFileStore.create(conf, fs, MobUtils.getMobHome(conf),
-          TableName.valueOf(tableName), family);
-      MobUtils.cleanExpiredData(fs, mobFileStore);
+      // disable the block cache.
+      Configuration copyOfConf = new Configuration(conf);
+      copyOfConf.getFloat(HConstants.HFILE_BLOCK_CACHE_SIZE_KEY, 0.00001f);
+      CacheConfig cacheConfig = new CacheConfig(copyOfConf);
+      MobUtils.cleanExpiredMobFiles(fs, conf, tn, family, cacheConfig,
+          EnvironmentEdgeManager.currentTimeMillis());
     } finally {
       try {
         admin.close();
