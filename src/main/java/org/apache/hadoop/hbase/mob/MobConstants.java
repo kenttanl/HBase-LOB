@@ -22,6 +22,9 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.Tag;
 import org.apache.hadoop.hbase.util.Bytes;
 
+/**
+ * The constants used in mob.
+ */
 public class MobConstants {
 
   public static final byte[] IS_MOB = Bytes.toBytes("isMob");
