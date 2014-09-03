@@ -33,6 +33,8 @@ import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.coprocessor.BaseMasterObserver;
+import org.apache.hadoop.hbase.coprocessor.MobMasterObserver;
 import org.apache.hadoop.hbase.mob.MobConstants;
 import org.apache.hadoop.hbase.mob.MobUtils;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -58,9 +60,11 @@ public class TestDeleteMobTable {
     TEST_UTIL.getConfiguration().setInt("hbase.master.info.port", 0);
     TEST_UTIL.getConfiguration().setBoolean("hbase.regionserver.info.port.auto", true);
     TEST_UTIL.getConfiguration().setClass("hbase.hregion.impl", HMobRegion.class,
-    		HMobRegion.class);
+        HRegion.class);
     TEST_UTIL.getConfiguration().setClass(DefaultStoreEngine.DEFAULT_STORE_FLUSHER_CLASS_KEY,
-    		DefaultMobStoreFlusher.class, DefaultStoreFlusher.class);
+        DefaultMobStoreFlusher.class, DefaultStoreFlusher.class);
+    TEST_UTIL.getConfiguration().setClass("hbase.coprocessor.master.classes",
+        MobMasterObserver.class, BaseMasterObserver.class);
     TEST_UTIL.startMiniCluster(1);
     
   }

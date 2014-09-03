@@ -66,6 +66,11 @@ public class TestMobStoreScanner {
   public static void setUpBeforeClass() throws Exception {
     TEST_UTIL.getConfiguration().setInt("hbase.master.info.port", 0);
     TEST_UTIL.getConfiguration().setBoolean("hbase.regionserver.info.port.auto", true);
+    TEST_UTIL.getConfiguration().setInt("hfile.format.version", 3);
+    TEST_UTIL.getConfiguration().setClass("hbase.hregion.impl", HMobRegion.class,
+        HRegion.class);
+    TEST_UTIL.getConfiguration().setClass(DefaultStoreEngine.DEFAULT_STORE_FLUSHER_CLASS_KEY,
+        DefaultMobStoreFlusher.class, DefaultStoreFlusher.class);
 
     TEST_UTIL.startMiniCluster(1);
   }

@@ -44,6 +44,8 @@ import org.apache.hadoop.hbase.MediumTests;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.coprocessor.BaseMasterObserver;
+import org.apache.hadoop.hbase.coprocessor.MobMasterObserver;
 import org.apache.hadoop.hbase.mob.MobConstants;
 import org.apache.hadoop.hbase.mob.MobUtils;
 import org.apache.hadoop.hbase.monitoring.MonitoredTask;
@@ -99,6 +101,14 @@ public class TestHMobStore {
    */
   @Before
   public void setUp() throws Exception {
+    TEST_UTIL.getConfiguration().setInt("hfile.format.version", 3);
+    TEST_UTIL.getConfiguration().setClass("hbase.hregion.impl", HMobRegion.class,
+        HRegion.class);
+    TEST_UTIL.getConfiguration().setClass(DefaultStoreEngine.DEFAULT_STORE_FLUSHER_CLASS_KEY,
+        DefaultMobStoreFlusher.class, DefaultStoreFlusher.class);
+    TEST_UTIL.getConfiguration().setClass("hbase.coprocessor.master.classes",
+        MobMasterObserver.class, BaseMasterObserver.class);
+    
     qualifiers.add(qf1);
     qualifiers.add(qf3);
     qualifiers.add(qf5);
@@ -116,7 +126,7 @@ public class TestHMobStore {
   throws IOException {
     hcd = new HColumnDescriptor(family);
     hcd.setValue(MobConstants.IS_MOB, Bytes.toBytes(Boolean.TRUE));
-    hcd.setValue(MobConstants.MOB_THRESHOLD, Bytes.toBytes(3L));
+    hcd.setValue(MobConstants.MOB_THRESHOLD, Bytes.toBytes(0L));
     hcd.setMaxVersions(4);
     init(methodName, conf, hcd, testStore);
   }
@@ -191,7 +201,7 @@ public class TestHMobStore {
    */
   @Test
   public void testGetFromMemStore() throws IOException {
-    final Configuration conf = HBaseConfiguration.create();
+    final Configuration conf = TEST_UTIL.getConfiguration();
     init(name.getMethodName(), conf, false);
 
     //Put data in memstore
@@ -270,7 +280,7 @@ public class TestHMobStore {
    */
   @Test
   public void testGetReferencesFromFiles() throws IOException {
-    final Configuration conf = HBaseConfiguration.create();
+    final Configuration conf = TEST_UTIL.getConfiguration();
     init(name.getMethodName(), conf, false);
 
     //Put data in memstore
@@ -317,7 +327,7 @@ public class TestHMobStore {
   @Test
   public void testGetFromMemStoreAndFiles() throws IOException {
 
-    final Configuration conf = HBaseConfiguration.create();
+    final Configuration conf = TEST_UTIL.getConfiguration();
 
     init(name.getMethodName(), conf, false);
 
@@ -361,7 +371,7 @@ public class TestHMobStore {
   @Test
   public void testMobCellSizeThreshold() throws IOException {
 
-    final Configuration conf = HBaseConfiguration.create();
+    final Configuration conf = TEST_UTIL.getConfiguration();
 
     HColumnDescriptor hcd;
     hcd = new HColumnDescriptor(family);
@@ -412,7 +422,7 @@ public class TestHMobStore {
 
   @Test
   public void testCommitFile() throws Exception {
-    final Configuration conf = HBaseConfiguration.create();
+    final Configuration conf = TEST_UTIL.getConfiguration();
     init(name.getMethodName(), conf, true);
     String targetPathName = MobUtils.formatDate(new Date());
     Path targetPath = new Path(store.getPath(), (targetPathName
