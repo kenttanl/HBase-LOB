@@ -31,7 +31,6 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.io.compress.Compression;
-import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.io.hfile.HFile;
 import org.apache.hadoop.hbase.io.hfile.HFileContext;
 import org.apache.hadoop.hbase.io.hfile.HFileContextBuilder;
@@ -42,6 +41,22 @@ import org.apache.hadoop.hbase.mob.MobFileName;
 import org.apache.hadoop.hbase.mob.MobUtils;
 import org.apache.hadoop.hbase.util.Bytes;
 
+/**
+ * The store implementation to save MOBs (medium objects), it extends the HStore.
+ * When a descriptor of a column family has the value "is_mob", it means this column family
+ * is a mob one. When a HRegion instantiate a store for this column family, the HMobStore is
+ * created.
+ * HMobStore is almost the same with the HStore except using different types of scanners.
+ * In the method of getScanner, the MobStoreScanner and MobReversedStoreScanner are returned.
+ * In these scanners, a additional seeks in the mob files should be performed after the seek
+ * to HBase is done.
+ * The store implements how we save MOBs by extending HStore. When a descriptor
+ * of a column family has the value "isMob", it means this column family is a mob one. When a
+ * HRegion instantiate a store for this column family, the HMobStore is created. HMobStore is
+ * almost the same with the HStore except using different types of scanners. In the method of
+ * getScanner, the MobStoreScanner and MobReversedStoreScanner are returned. In these scanners, a
+ * additional seeks in the mob files should be performed after the seek in HBase is done.
+ */
 public class HMobStore extends HStore {
 
   private MobCacheConfig mobCacheConfig;
@@ -120,7 +135,6 @@ public class HMobStore extends HStore {
       Compression.Algorithm compression, byte[] startKey) throws IOException {
     MobFileName mobFileName = MobFileName.create(startKey, date, UUID.randomUUID()
         .toString().replaceAll("-", ""));
-    final CacheConfig writerCacheConf = mobCacheConfig;
     HFileContext hFileContext = new HFileContextBuilder().withCompression(compression)
         .withIncludesMvcc(false).withIncludesTags(true)
         .withChecksumType(HFile.DEFAULT_CHECKSUM_TYPE)
@@ -128,7 +142,7 @@ public class HMobStore extends HStore {
         .withBlockSize(getFamily().getBlocksize())
         .withHBaseCheckSum(true).withDataBlockEncoding(getFamily().getDataBlockEncoding()).build();
 
-    StoreFile.Writer w = new StoreFile.WriterBuilder(conf, writerCacheConf, region.getFilesystem())
+    StoreFile.Writer w = new StoreFile.WriterBuilder(conf, mobCacheConfig, region.getFilesystem())
         .withFilePath(new Path(basePath, mobFileName.getFileName()))
         .withComparator(KeyValue.COMPARATOR).withBloomType(BloomType.NONE)
         .withMaxKeyCount(maxKeyCount).withFileContext(hFileContext).build();
