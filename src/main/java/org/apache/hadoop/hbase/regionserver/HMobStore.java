@@ -31,6 +31,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.io.compress.Compression;
+import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding;
 import org.apache.hadoop.hbase.io.hfile.HFile;
 import org.apache.hadoop.hbase.io.hfile.HFileContext;
 import org.apache.hadoop.hbase.io.hfile.HFileContextBuilder;
@@ -140,7 +141,7 @@ public class HMobStore extends HStore {
         .withChecksumType(HFile.DEFAULT_CHECKSUM_TYPE)
         .withBytesPerCheckSum(HFile.DEFAULT_BYTES_PER_CHECKSUM)
         .withBlockSize(getFamily().getBlocksize())
-        .withHBaseCheckSum(true).withDataBlockEncoding(getFamily().getDataBlockEncoding()).build();
+        .withHBaseCheckSum(true).withDataBlockEncoding(DataBlockEncoding.NONE).build();
 
     StoreFile.Writer w = new StoreFile.WriterBuilder(conf, mobCacheConfig, region.getFilesystem())
         .withFilePath(new Path(basePath, mobFileName.getFileName()))

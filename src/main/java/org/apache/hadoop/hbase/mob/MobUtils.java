@@ -46,6 +46,7 @@ import org.apache.hadoop.hbase.backup.HFileArchiver;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.io.HFileLink;
 import org.apache.hadoop.hbase.io.compress.Compression;
+import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding;
 import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.io.hfile.HFile;
 import org.apache.hadoop.hbase.io.hfile.HFileContext;
@@ -424,7 +425,7 @@ public class MobUtils {
         .withChecksumType(HFile.DEFAULT_CHECKSUM_TYPE)
         .withBytesPerCheckSum(HFile.DEFAULT_BYTES_PER_CHECKSUM)
         .withBlockSize(family.getBlocksize()).withHBaseCheckSum(true)
-        .withDataBlockEncoding(family.getDataBlockEncoding()).build();
+        .withDataBlockEncoding(DataBlockEncoding.NONE).build();
 
     StoreFile.Writer w = new StoreFile.WriterBuilder(conf, cacheConfig, fs)
         .withFilePath(new Path(basePath, mobFileName.getFileName()))
