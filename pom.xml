@@ -35,7 +35,8 @@
     <mockito-all.version>1.8.5</mockito-all.version>
     <zookeeper.version>3.4.5</zookeeper.version>
     
-    <surefire.version>2.12-TRUNK-HBASE-2</surefire.version>
+	<!--<surefire.version>2.12-TRUNK-HBASE-2</surefire.version>-->
+	<surefire.version>2.12</surefire.version>
     <surefire.provider>surefire-junit47</surefire.provider>
 
     <!-- default: run small & medium, medium with 2 threads -->
@@ -229,6 +230,7 @@
           </configuration>
         </plugin>
         <plugin>
+		  <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
           <version>${surefire.version}</version>
           <dependencies>
